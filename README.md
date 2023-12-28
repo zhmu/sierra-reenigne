@@ -8,4 +8,8 @@ Recently, I decided to start to properly clean up, write down and publish the in
 
 ## Contents
 
-- [Sound drivers](sound-drivers/README.md) - contains reverse engineered, commented sound drivers sources that yield byte-for-byte identical binaries to the original drivers (SCI0/SCI1)
+### Sound
+
+- [Sound drivers](sound/drivers/README.md): reverse engineered, commented sound drivers sources that yield byte-for-byte identical binaries to the original drivers (SCI0/SCI1)
+- [SCI0PLAY](sound/sci0play/README.md): Allows playback of SCI0 songs on MS-DOS using the original drivers.
+- [SCI1PLAY](sound/sci1play/README.md): Allows playback of SCI1 songs on MS-DOS using the original drivers.
