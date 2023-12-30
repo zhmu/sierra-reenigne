@@ -8,6 +8,12 @@ Recently, I decided to start to properly clean up, write down and publish the in
 
 ## Contents
 
+### Resource
+
+All SCI games use a `RESOURCE.MAP` file, which details which resources are present and in which `RESOURCE.nnn` the content is located. Resources can be any aspect of game data, for example graphics, music, scripts, fonts and the like.
+
+- [Extract](resource/README.md): tool to extract SCI0/SCI1 resources to individual files.
+
 ### Sound
 
 - [Sound drivers](sound/drivers/README.md): reverse engineered, commented sound drivers sources that yield byte-for-byte identical binaries to the original drivers (SCI0/SCI1)

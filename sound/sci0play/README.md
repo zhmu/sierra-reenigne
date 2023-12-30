@@ -15,7 +15,7 @@ Simply run ``build.sh`` - you need to have [OpenWatcom](https://github.com/open-
 
 ## Usage
 
-You will need the original Sierra audio drivers (or patched versions thereof). Furthermore, the contents of the ``resource.*`` files must be extracted to obtain the necessary ``sound.*`` and ``patch.*`` files. This can be performed by using ``extract`` from my [sci-tools](https://github.com/zhmu/sci-tools/) repository (``cargo run --bin extract path_to_resource extract_path`` should do the trick)
+You will need the original Sierra audio drivers (or patched versions thereof). Furthermore, the contents of the ``resource.*`` files must be extracted to obtain the necessary ``sound.*`` and ``patch.*`` files. This can be performed by using `extract` which can be found in the [resource](../../resource/README.md) directory.
 
 Once all files are available, use ``sci0play sound.nnn`` - this will default to ``adl.drv`` and play the song.
 
