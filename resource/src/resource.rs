@@ -33,7 +33,7 @@ pub enum CompressionMethod {
     None,
     LZW,
     Huffman,
-    Explode,
+    Implode,
     Unknown(u16)
 }
 
@@ -72,7 +72,7 @@ impl CompressionMethod {
             0 => { CompressionMethod::None },
             1 => { CompressionMethod::LZW },
             2 => { CompressionMethod::Huffman},
-            18 | 19 | 20 => { CompressionMethod::Explode },
+            18 | 19 | 20 => { CompressionMethod::Implode },
             _ => { CompressionMethod::Unknown(value) }
         }
     }
@@ -131,7 +131,7 @@ impl fmt::Display for CompressionMethod {
             CompressionMethod::None => { write!(f, "none") },
             CompressionMethod::LZW => { write!(f, "lzw") },
             CompressionMethod::Huffman => { write!(f, "huffman") },
-            CompressionMethod::Explode => { write!(f, "explode") },
+            CompressionMethod::Implode => { write!(f, "implode") },
             CompressionMethod::Unknown(v) => { write!(f, "unk{}", v) }
         }
     }

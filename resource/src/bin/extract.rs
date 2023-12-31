@@ -38,7 +38,7 @@ fn decompress(resource: &resource::ResourceData) -> DecompressResult {
             decompress::decompress_huffman(&resource.data, &mut output);
             message = "Huffman".to_string();
         },
-        resource::CompressionMethod::Explode => {
+        resource::CompressionMethod::Implode => {
             match explode::explode(&resource.data) {
                 Ok(data) => {
                     message = "Explode".to_string();
