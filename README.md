@@ -20,3 +20,7 @@ All SCI games use a `RESOURCE.MAP` file, which details which resources are prese
 - [Sound drivers](sound/drivers/README.md): reverse engineered, commented sound drivers sources that yield byte-for-byte identical binaries to the original drivers (SCI0/SCI1)
 - [SCI0PLAY](sound/sci0play/README.md): Allows playback of SCI0 songs on MS-DOS using the original drivers.
 - [SCI1PLAY](sound/sci1play/README.md): Allows playback of SCI1 songs on MS-DOS using the original drivers.
+
+### Script
+
+- [disassemble0](script/sci0/README.md): tool to disassemble SCI0 scripts
