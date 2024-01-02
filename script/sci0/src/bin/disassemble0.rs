@@ -101,6 +101,34 @@ fn decode_said(block: &script::ScriptBlock, vocab: &vocab::Vocab000) -> Result<(
     Ok(())
 }
 
+fn dump_block(script: &script::Script, block: &script::ScriptBlock) -> Result<()> {
+    const BYTES_PER_LINE: usize = 16;
+
+    let mut n: usize = 0;
+    while n < block.data.len() {
+        let mut s: String = format!("{:04x}:", n);
+        let num_bytes: usize = std::cmp::min(block.data.len() - n, BYTES_PER_LINE);
+        for m in 0..num_bytes {
+            s += format!(" {:02x}", block.data[n + m]).as_str();
+        }
+        for m in num_bytes..BYTES_PER_LINE {
+            s += "   ";
+        }
+        s += "  ";
+        for m in 0..num_bytes {
+            let b = block.data[n + m] as char;
+            if b >= ' ' && b <= '~' {
+                s += format!("{}", b).as_str();
+            } else {
+                s += ".";
+            }
+        }
+        println!("{}", s);
+        n += num_bytes;
+    }
+    Ok(())
+}
+
 fn generate_object_class_labels(block: &script::ScriptBlock, object_class: &object_class::ObjectClass, selector_vocab: &vocab::Vocab997, labels: &mut LabelMap) {
     let obj_offset = block.base + 8; // skip magic/local var offset
     let label = format!("{}", object_class.name);
@@ -200,8 +228,7 @@ fn main() -> Result<()> {
             script::BlockType::Code => { disassemble_block(&script, &block, &labels); }
             script::BlockType::Object => { decode_object_class(&script, &block, &selector_vocab, &class_definitions, false)?; }
             script::BlockType::Class => { decode_object_class(&script, &block, &selector_vocab, &class_definitions, true)?; }
-            script::BlockType::Said => { decode_said(&block, &main_vocab)?; }
-            _ => { }
+            _ => { dump_block(&script, &block)?; }
         };
         println!();
     }
