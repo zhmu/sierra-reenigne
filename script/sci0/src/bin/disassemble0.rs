@@ -171,7 +171,7 @@ fn generate_export_labels(block: &script::ScriptBlock, script_id: i16, labels: &
     Ok(())
 }
 
-fn build_label_map(script: &script::Script, selector_vocab: &vocab::Vocab997, main_vocab: &vocab::Vocab000) -> Result<LabelMap> {
+fn build_label_map(script: &script::Script, selector_vocab: &vocab::Vocab997, main_vocab: &Option<vocab::Vocab000>) -> Result<LabelMap> {
     let mut labels: LabelMap = LabelMap::new();
     for block in &script.blocks {
         match block.r#type {
@@ -184,8 +184,10 @@ fn build_label_map(script: &script::Script, selector_vocab: &vocab::Vocab997, ma
                 generate_object_class_labels(&block, &object_class, &selector_vocab, &mut labels);
             },
             script::BlockType::Said => {
-                let said = said::Said::new(&block, &main_vocab)?;
-                generate_said_labels(&said, &mut labels);
+                if let Some(vocab) = main_vocab {
+                    let said = said::Said::new(&block, vocab)?;
+                    generate_said_labels(&said, &mut labels);
+                }
             },
             script::BlockType::Code => {
                 generate_code_labels(&block, &mut labels);
@@ -212,8 +214,13 @@ fn main() -> Result<()> {
     let vocab_997_data = std::fs::read(format!("{}/vocab.997", extract_path))?;
     let selector_vocab = vocab::Vocab997::new(&vocab_997_data)?;
 
-    let vocab_000_data = std::fs::read(format!("{}/vocab.000", extract_path))?;
-    let main_vocab = vocab::Vocab000::new(&vocab_000_data)?;
+    let main_vocab: Option<vocab::Vocab000>;
+    if let Ok(vocab_000_data) = std::fs::read(format!("{}/vocab.000", extract_path)) {
+        let v = vocab::Vocab000::new(&vocab_000_data)?;
+        main_vocab = Some(v);
+    } else {
+        main_vocab = None;
+    }
 
     let vocab_996_data = std::fs::read(format!("{}/vocab.996", extract_path))?;
     let class_vocab = vocab::Vocab996::new(&vocab_996_data)?;
@@ -228,7 +235,13 @@ fn main() -> Result<()> {
             script::BlockType::Code => { disassemble_block(&script, &block, &labels); }
             script::BlockType::Object => { decode_object_class(&script, &block, &selector_vocab, &class_definitions, object_class::ObjectClassType::Object)?; }
             script::BlockType::Class => { decode_object_class(&script, &block, &selector_vocab, &class_definitions, object_class::ObjectClassType::Class)?; }
-            script::BlockType::Said => { decode_said(&block, &main_vocab)?; },
+            script::BlockType::Said => {
+                if let Some(vocab) = &main_vocab {
+                    decode_said(&block, vocab)?;
+                } else {
+                    println!("*** Cannot decode said block, vocabulary not loaded");
+                }
+            },
             _ => { dump_block(&script, &block)?; }
         };
         println!();

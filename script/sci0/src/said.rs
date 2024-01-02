@@ -4,17 +4,6 @@ use std::io::Cursor;
 use anyhow::Result;
 use crate::{script, vocab};
 
-#[derive(Debug)]
-pub enum SaidError {
-    IoError(std::io::Error),
-}
-
-impl From<std::io::Error> for SaidError {
-    fn from(error: std::io::Error) -> Self {
-       SaidError::IoError(error)
-    }
-}
-
 fn said_operator_to_char(op: u8) -> char {
     match op {
         0xf0 => ',',
