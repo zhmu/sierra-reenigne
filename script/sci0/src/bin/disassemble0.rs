@@ -64,10 +64,10 @@ fn disassemble_block(script: &script::Script, block: &script::ScriptBlock, label
     }
 }
 
-fn decode_object_class(script: &script::Script, block: &script::ScriptBlock, selector_vocab: &vocab::Vocab997, class_definitions: &class_defs::ClassDefinitions, is_class: bool) -> Result<()> {
-    let object_class = object_class::ObjectClass::new(&script, &block, is_class)?;
+fn decode_object_class(script: &script::Script, block: &script::ScriptBlock, selector_vocab: &vocab::Vocab997, class_definitions: &class_defs::ClassDefinitions, oc_type: object_class::ObjectClassType) -> Result<()> {
+    let object_class = object_class::ObjectClass::new(&script, &block, oc_type.clone())?;
 
-    let object_or_class = if is_class { "class" } else { "object" };
+    let object_or_class = if oc_type == object_class::ObjectClassType::Class { "class" } else { "object" };
     let species = object_class.get_species();
     let species_class = class_definitions.find_class(species).unwrap();
 
@@ -101,22 +101,22 @@ fn decode_said(block: &script::ScriptBlock, vocab: &vocab::Vocab000) -> Result<(
     Ok(())
 }
 
-fn dump_block(script: &script::Script, block: &script::ScriptBlock) -> Result<()> {
+fn dump_block(_script: &script::Script, block: &script::ScriptBlock) -> Result<()> {
     const BYTES_PER_LINE: usize = 16;
 
     let mut n: usize = 0;
     while n < block.data.len() {
         let mut s: String = format!("{:04x}:", n);
         let num_bytes: usize = std::cmp::min(block.data.len() - n, BYTES_PER_LINE);
-        for m in 0..num_bytes {
-            s += format!(" {:02x}", block.data[n + m]).as_str();
+        for b in &block.data[n..n+num_bytes] {
+            s += format!(" {:02x}", b).as_str();
         }
-        for m in num_bytes..BYTES_PER_LINE {
+        for _ in num_bytes..BYTES_PER_LINE {
             s += "   ";
         }
         s += "  ";
-        for m in 0..num_bytes {
-            let b = block.data[n + m] as char;
+        for b in &block.data[n..n+num_bytes] {
+            let b = *b as char;
             if b >= ' ' && b <= '~' {
                 s += format!("{}", b).as_str();
             } else {
@@ -176,11 +176,11 @@ fn build_label_map(script: &script::Script, selector_vocab: &vocab::Vocab997, ma
     for block in &script.blocks {
         match block.r#type {
             script::BlockType::Object => {
-                let object_class = object_class::ObjectClass::new(&script, &block, false)?;
+                let object_class = object_class::ObjectClass::new(&script, &block, object_class::ObjectClassType::Object)?;
                 generate_object_class_labels(&block, &object_class, &selector_vocab, &mut labels);
             },
             script::BlockType::Class => {
-                let object_class = object_class::ObjectClass::new(&script, &block, true)?;
+                let object_class = object_class::ObjectClass::new(&script, &block, object_class::ObjectClassType::Class)?;
                 generate_object_class_labels(&block, &object_class, &selector_vocab, &mut labels);
             },
             script::BlockType::Said => {
@@ -226,8 +226,9 @@ fn main() -> Result<()> {
         println!("block @ {:x} type {:?} size {}", block.base, block.r#type, block.data.len());
         match block.r#type {
             script::BlockType::Code => { disassemble_block(&script, &block, &labels); }
-            script::BlockType::Object => { decode_object_class(&script, &block, &selector_vocab, &class_definitions, false)?; }
-            script::BlockType::Class => { decode_object_class(&script, &block, &selector_vocab, &class_definitions, true)?; }
+            script::BlockType::Object => { decode_object_class(&script, &block, &selector_vocab, &class_definitions, object_class::ObjectClassType::Object)?; }
+            script::BlockType::Class => { decode_object_class(&script, &block, &selector_vocab, &class_definitions, object_class::ObjectClassType::Class)?; }
+            script::BlockType::Said => { decode_said(&block, &main_vocab)?; },
             _ => { dump_block(&script, &block)?; }
         };
         println!();

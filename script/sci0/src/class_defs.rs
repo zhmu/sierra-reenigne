@@ -26,7 +26,7 @@ impl ClassDefinitions {
             for block in &script.blocks {
                 match block.r#type {
                     script::BlockType::Class => {
-                        let object_class = object_class::ObjectClass::new(&script, &block, true);
+                        let object_class = object_class::ObjectClass::new(&script, &block, object_class::ObjectClassType::Class);
                         if let Ok(object_class) = object_class {
                             let species = object_class.get_species();
                             definitions.insert(species, object_class);

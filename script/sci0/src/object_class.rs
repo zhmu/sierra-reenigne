@@ -36,7 +36,7 @@ pub struct ObjectClass {
 }
 
 impl ObjectClass {
-    pub fn new(script: &script::Script, block: &script::ScriptBlock, is_class: bool) -> Result<ObjectClass> {
+    pub fn new(script: &script::Script, block: &script::ScriptBlock, oc_type: ObjectClassType) -> Result<ObjectClass> {
         let mut rdr = Cursor::new(&block.data);
         let block_magic = rdr.read_u16::<LittleEndian>()?;
         if block_magic != 0x1234 {
@@ -51,7 +51,7 @@ impl ObjectClass {
             properties.push(SelectorValue{ selector, selector_id: None })
         }
 
-        if is_class {
+        if oc_type == ObjectClassType::Class {
             // Selector IDs
             for n in 0..number_vs {
                 let id = rdr.read_u16::<LittleEndian>()?;
@@ -90,12 +90,6 @@ impl ObjectClass {
                 Some(x) => { name = x },
                 None => { return Err(anyhow!("string pointer out of range")); }
             }
-        }
-        let oc_type;
-        if is_class {
-            oc_type = ObjectClassType::Class;
-        } else {
-            oc_type = ObjectClassType::Object;
         }
         Ok(ObjectClass{ name: name.to_string(), r#type: oc_type, properties, functions })
     }
