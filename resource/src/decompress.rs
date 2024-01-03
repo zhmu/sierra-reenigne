@@ -19,7 +19,6 @@ fn lzw_end_token(num_bits: u32) -> u32 {
 pub fn decompress_lzw(input: &[u8], output: &mut Vec<u8>) {
     let mut stream = bitstream::Streamer::new(input);
     let mut tokens = [ Token{ offset: 0, length: 0 }; (1 << LZW_BITS_MAX) as usize ];
-
     let mut token_lastlength: usize;
     let mut num_bits: u32 = LZW_BITS_INITIAL;
     let mut cur_token: u32 = LZW_TOKEN_INITIAL;
@@ -56,6 +55,88 @@ pub fn decompress_lzw(input: &[u8], output: &mut Vec<u8>) {
             tokens[cur_token as usize] = Token{ offset: output.len() - token_lastlength, length: token_lastlength };
             cur_token += 1;
         }
+    }
+}
+
+#[derive(Copy, Clone)]
+struct Token1 {
+    data: u8,
+    next: u32
+}
+
+pub fn decompress_lzw1(input: &[u8], output: &mut Vec<u8>) {
+    let mut stream = bitstream::Streamer::new(input);
+    let mut tokens = [ Token1{ data: 0, next: 0 }; 4100 ];
+
+    let mut num_bits: u32 = LZW_BITS_INITIAL;
+    let mut cur_token: u32 = LZW_TOKEN_INITIAL;
+    let mut end_token: u32 = 0x200;
+
+    let mut reset = true;
+    let mut lastbits: u32 = 0;
+    let mut lastchar: u8 = 0;
+
+    let mut history = [ 0u8; 4116 ];
+    let mut history_len: usize = 0;
+    while !stream.end_of_stream() {
+        let bitstring = stream.get_bits_msb(num_bits);
+        if bitstring == LZW_TOKEN_END_OF_STREAM {
+            // End-of-data - stop
+            break
+        }
+
+        if reset {
+			lastbits = bitstring;
+			lastchar = (bitstring & 0xff) as u8;
+			output.push(lastchar);
+            reset = false;
+            continue
+        }
+
+        if bitstring == LZW_TOKEN_RESET {
+            // Restart
+            num_bits = 9;
+            cur_token = 0x102;
+            end_token = 0x200;
+            reset = true;
+            continue
+        }
+
+        let mut token = bitstring;
+        if token >= cur_token { // index past current point
+            token = lastbits;
+            history[history_len] = lastchar;
+            history_len += 1;
+        }
+
+        // Follow links back in data
+        while token > 0xff && (token as usize) < tokens.len() {
+            history[history_len] = tokens[token as usize].data;
+            history_len += 1;
+            token = tokens[token as usize].next;
+        }
+        lastchar = (token & 0xff) as u8;
+        history[history_len] = lastchar;
+        history_len += 1;
+
+        // put stack in buffer
+        while history_len > 0 {
+            history_len -= 1;
+            output.push(history[history_len]);
+        }
+
+        // Insert new tokens
+        if cur_token < end_token {
+            tokens[cur_token as usize].data = lastchar;
+            tokens[cur_token as usize].next = lastbits;
+            cur_token += 1;
+            if cur_token == (end_token - 1) && num_bits < 12 {
+                // Grow token length
+                num_bits += 1;
+                end_token <<= 1;
+            }
+        }
+        lastbits = bitstring;
     }
 }
 
