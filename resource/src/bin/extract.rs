@@ -5,17 +5,28 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 use sciresource::{resource, resource0, resource1, decompress};
+
+#[derive(Subcommand)]
+enum CliCommands {
+    /// Extract resources
+    Extract {
+        /// Output directory
+        out_dir: PathBuf,
+    },
+    /// Lists all resources
+    List,
+}
 
 /// Extracts Sierra resources from RESOURCE.* to individual files
 #[derive(Parser)]
 struct Cli {
     /// Input directory
     in_dir: PathBuf,
-    /// Output directory
-    out_dir: PathBuf,
+    #[command(subcommand)]
+    command: Option<CliCommands>
 }
 
 struct DecompressResult {
@@ -66,6 +77,7 @@ fn extract(out_dir: &Path, resource_map: &dyn resource::ResourceMap) -> Result<(
     for rid in resource_map.get_entries() {
         let resource = resource_map.read_resource(&rid)?;
         let info = &resource.info;
+
         println!("  resource: {}.{:03} comp_size {} decomp_size {} comp_method {}",
             rid.rtype, rid.num, info.compressed_size, info.uncompressed_size, info.compression_method);
 
@@ -78,6 +90,17 @@ fn extract(out_dir: &Path, resource_map: &dyn resource::ResourceMap) -> Result<(
         } else {
             println!("    !! could not decompress, skipping");
         }
+    }
+    Ok(())
+}
+
+fn list(resource_map: &dyn resource::ResourceMap) -> Result<()> {
+    println!("resource      compr uncompr method");
+    for rid in resource_map.get_entries() {
+        let resource = resource_map.read_resource(&rid)?;
+        let info = &resource.info;
+        let res_id = format!("{}.{:03}", rid.rtype, rid.num);
+        println!("{:12} {:6}  {:6} {}", res_id, info.compressed_size, info.uncompressed_size, info.compression_method);
     }
     Ok(())
 }
@@ -105,6 +128,14 @@ fn main() -> Result<()> {
         },
     }
 
-    extract(&args.out_dir, resources.as_ref())?;
+    match &args.command {
+        Some(CliCommands::Extract { out_dir }) => {
+            extract(&out_dir, resources.as_ref())?;
+        },
+        Some(CliCommands::List) => {
+            list(resources.as_ref())?;
+        },
+        None => { }
+    }
     Ok(())
 }
