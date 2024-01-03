@@ -66,6 +66,7 @@ fn parse_map_1_5(rdirectory: &ResourceDirectory, input: &[u8]) -> Result<Vec<Res
     for n in 0..rdirectory.len() - 1 {
         let position = rdirectory[n].offset as usize;
         let position_end = rdirectory[n + 1].offset as usize;
+        if position_end <= position { return Err(anyhow!("corrupt map: resource end is before start")); }
         let map_entry_data = &input[position..position_end];
 
         let mut rdr = Cursor::new(&map_entry_data);
@@ -93,6 +94,7 @@ fn parse_map_1_6(rdirectory: &ResourceDirectory, input: &[u8]) -> Result<Vec<Res
     for n in 0..rdirectory.len() - 1 {
         let position = rdirectory[n].offset as usize;
         let position_end = rdirectory[n + 1].offset as usize;
+        if position_end <= position { return Err(anyhow!("corrupt map: resource end is before start")); }
         let map_entry_data = &input[position..position_end];
 
         let mut rdr = Cursor::new(&map_entry_data);
