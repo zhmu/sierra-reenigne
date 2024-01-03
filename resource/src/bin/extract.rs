@@ -49,6 +49,11 @@ fn decompress(resource: &resource::ResourceData) -> DecompressResult {
             decompress::decompress_huffman(&resource.data, &mut output);
             message = "Huffman".to_string();
         },
+        resource::CompressionMethod::LZW1 => {
+            output = Vec::with_capacity(info.uncompressed_size as usize);
+            decompress::decompress_lzw1(&resource.data, &mut output);
+            message = "LZW1".to_string();
+        },
         resource::CompressionMethod::Implode => {
             match explode::explode(&resource.data) {
                 Ok(data) => {

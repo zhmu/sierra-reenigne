@@ -2,7 +2,7 @@ use anyhow::{Result};
 use std::fmt;
 use std::fmt::Formatter;
 
-#[derive(PartialEq,Eq,Hash,Clone,Copy,Debug)]
+#[derive(PartialEq,Eq,Hash,Clone,Copy)]
 pub enum ResourceType {
     View,
     Picture,
@@ -28,10 +28,11 @@ pub enum ResourceType {
     Unknown(u8)
 }
 
-#[derive(Clone)]
+#[derive(Clone,Copy,PartialEq)]
 pub enum CompressionMethod {
     None,
     LZW,
+    LZW1,
     Huffman,
     Implode,
     Unknown(u16)
@@ -78,7 +79,7 @@ impl CompressionMethod {
     }
 }
 
-#[derive(PartialEq,Eq,Hash,Clone,Copy,Debug)]
+#[derive(PartialEq,Eq,Hash,Clone,Copy)]
 pub struct ResourceID {
     pub rtype: ResourceType,
     pub num: u16,
@@ -126,14 +127,21 @@ impl fmt::Display for ResourceType {
 }
 
 impl fmt::Display for CompressionMethod {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             CompressionMethod::None => { write!(f, "none") },
             CompressionMethod::LZW => { write!(f, "lzw") },
+            CompressionMethod::LZW1 => { write!(f, "lzw1") },
             CompressionMethod::Huffman => { write!(f, "huffman") },
             CompressionMethod::Implode => { write!(f, "implode") },
             CompressionMethod::Unknown(v) => { write!(f, "unk{}", v) }
         }
+    }
+}
+
+impl fmt::Display for ResourceID {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}.{:03}", self.rtype, self.num)
     }
 }
 
