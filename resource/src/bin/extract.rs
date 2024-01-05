@@ -82,7 +82,7 @@ fn decompress(resource: &resource::ResourceData) -> DecompressResult {
     DecompressResult{ message, output }
 }
 
-fn extract(out_dir: &Path, resource_map: &dyn resource::ResourceMap) -> Result<()> {
+fn extract(out_dir: &Path, resource_map: &resource::ResourceMap) -> Result<()> {
     for rid in resource_map.get_entries() {
         let resource = resource_map.read_resource(&rid)?;
         let info = &resource.info;
@@ -103,7 +103,7 @@ fn extract(out_dir: &Path, resource_map: &dyn resource::ResourceMap) -> Result<(
     Ok(())
 }
 
-fn list(resource_map: &dyn resource::ResourceMap) -> Result<()> {
+fn list(resource_map: &resource::ResourceMap) -> Result<()> {
     println!("resource      compr uncompr method");
     for rid in resource_map.get_entries() {
         let resource = resource_map.read_resource(&rid)?;
@@ -117,17 +117,17 @@ fn list(resource_map: &dyn resource::ResourceMap) -> Result<()> {
 fn main() -> Result<()> {
     let args = Cli::parse();
 
-    let resources: Box<dyn resource::ResourceMap>;
+    let resources: Option<resource::ResourceMap>;
 
-    match resource1::ResourceMapV1::new(&args.in_dir) {
+    match resource1::parse_v1(&args.in_dir) {
         Ok(resources_v1) => {
-            resources = Box::new(resources_v1);
+            resources = Some(resources_v1);
         },
         Err(e) => {
             println!("- Unable to decode SCI1 resources: {}", e);
-            match resource0::ResourceMapV0::new(&args.in_dir) {
+            match resource0::parse_v0(&args.in_dir) {
                 Ok(resources_v0) => {
-                    resources = Box::new(resources_v0);
+                    resources = Some(resources_v0);
                 },
                 Err(e) => {
                     println!("- Unable to decode SCI0 resources: {}", e);
@@ -139,10 +139,10 @@ fn main() -> Result<()> {
 
     match &args.command {
         Some(CliCommands::Extract { out_dir }) => {
-            extract(&out_dir, resources.as_ref())?;
+            extract(&out_dir, &resources.unwrap())?;
         },
         Some(CliCommands::List) => {
-            list(resources.as_ref())?;
+            list(&resources.unwrap())?;
         },
         None => { }
     }

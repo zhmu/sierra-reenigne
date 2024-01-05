@@ -5,13 +5,12 @@ use std::collections::hash_map::Entry;
 use std::fs::File;
 use std::path::Path;
 use std::io::{Read,Seek,SeekFrom,Cursor};
-use anyhow::{anyhow, Result, Context};
+use anyhow::{anyhow, Result};
 
 use crate::resource;
 
 const RESOURCE_MAP: &str = "resource.map";
 
-#[derive(Clone)]
 struct ResourceEntryV0 {
     r_id: resource::ResourceID,
     r_volnr: u8,
@@ -23,11 +22,6 @@ struct ResourceHeaderV0 {
     comp_size: u16,
     decomp_size: u16,
     comp_method: resource::CompressionMethod
-}
-
-struct ResourceInfoV0 {
-    entry: ResourceEntryV0,
-    header: ResourceHeaderV0,
 }
 
 impl ResourceHeaderV0 {
@@ -42,11 +36,6 @@ impl ResourceHeaderV0 {
         let comp_method = resource::CompressionMethod::new(comp_method);
         Ok(ResourceHeaderV0{ id, comp_size, decomp_size, comp_method })
     }
-}
-
-pub struct ResourceMapV0 {
-    map: HashMap<resource::ResourceID, ResourceInfoV0>,
-    volumes: HashMap<u8, std::fs::File>
 }
 
 fn parse_resource_map_v0(input: &[u8]) -> Result<Vec<ResourceEntryV0>> {
@@ -70,7 +59,7 @@ fn parse_resource_map_v0(input: &[u8]) -> Result<Vec<ResourceEntryV0>> {
     Ok(entries)
 }
 
-fn guess_sci_version(entries: &mut HashMap<resource::ResourceID, ResourceInfoV0>) {
+fn guess_sci_version(entries: &mut HashMap<resource::ResourceID, resource::ResourceInfo>) {
     // Later versions of SCI0 changed the meaning of the compression methods:
     // Originally (SCI0):  1 = LZW, 2 = Huffman
     // Later:              1 = Huffman, 2 = LZW1
@@ -78,8 +67,8 @@ fn guess_sci_version(entries: &mut HashMap<resource::ResourceID, ResourceInfoV0>
     // We use pic.* resources to detect this - they should be compressed using
     // Huffman (or not at all)
     let all_pic_sci0 = entries.iter()
-        .filter(|&(_, v)| v.entry.r_id.rtype == resource::ResourceType::Picture)
-        .all(|(&_, &ref v)| match v.header.comp_method {
+        .filter(|&(k, _)| k.rtype == resource::ResourceType::Picture)
+        .all(|(&_, &ref v)| match v.compression_method {
             resource::CompressionMethod::Huffman | resource::CompressionMethod::None => true,
             _ => false
         });
@@ -89,66 +78,47 @@ fn guess_sci_version(entries: &mut HashMap<resource::ResourceID, ResourceInfoV0>
 
     // SCI01: Remap all compression types
     for (_key, resource) in entries.iter_mut() {
-        resource.header.comp_method = match resource.header.comp_method {
+        resource.compression_method = match resource.compression_method {
             resource::CompressionMethod::Huffman => { resource::CompressionMethod::LZW1 },
             resource::CompressionMethod::LZW => { resource::CompressionMethod::Huffman },
-            _ => { resource.header.comp_method }
+            _ => { resource.compression_method }
         };
     }
 }
 
-impl ResourceMapV0 {
-    pub fn new(path: &Path) -> Result<ResourceMapV0> {
-        let resource_map_data = std::fs::read(path.join(RESOURCE_MAP))?;
-        let entries = parse_resource_map_v0(&resource_map_data)?;
+pub fn parse_v0(path: &Path) -> Result<resource::ResourceMap> {
+    let resource_map_data = std::fs::read(path.join(RESOURCE_MAP))?;
+    let entries = parse_resource_map_v0(&resource_map_data)?;
 
-        let mut map: HashMap<resource::ResourceID, ResourceInfoV0> = HashMap::new();
-        let mut volumes: HashMap<u8, std::fs::File> = HashMap::new();
-        for entry in &entries {
-            // Obtain/open matching resource.nnn file
-            let res_file = match volumes.entry(entry.r_volnr) {
-                Entry::Occupied(o) => o.into_mut(),
-                Entry::Vacant(v) => {
-                    let resource_file = path.join(format!("resource.{:03}", entry.r_volnr));
-                    let res_file = File::open(&resource_file)?;
-                    v.insert(res_file)
-                }
-            };
-
-            // Fetch resource header from resource.nnn file
-            res_file.seek(SeekFrom::Start(entry.r_offset))?;
-            let header = ResourceHeaderV0::parse(res_file)?;
-            if header.id != entry.r_id {
-                return Err(anyhow!("resource id mismatch: map has {}, resource.{:03} has {}", entry.r_id, entry.r_volnr, header.id));
+    let mut map: HashMap<resource::ResourceID, resource::ResourceInfo> = HashMap::new();
+    let mut volumes: HashMap<u8, std::fs::File> = HashMap::new();
+    for entry in &entries {
+        // Obtain/open matching resource.nnn file
+        let res_file = match volumes.entry(entry.r_volnr) {
+            Entry::Occupied(o) => o.into_mut(),
+            Entry::Vacant(v) => {
+                let resource_file = path.join(format!("resource.{:03}", entry.r_volnr));
+                let res_file = File::open(&resource_file)?;
+                v.insert(res_file)
             }
-            map.insert(entry.r_id, ResourceInfoV0{ entry: entry.clone(), header });
-        }
-
-        guess_sci_version(&mut map);
-        Ok(ResourceMapV0{ map, volumes })
-    }
-}
-
-impl resource::ResourceMap for ResourceMapV0 {
-    fn read_resource(&self, rid: &resource::ResourceID) -> Result<resource::ResourceData> {
-        let entry = self.map.get(rid).context("resource not found")?;
-        let mut res_file = &self.volumes[&entry.entry.r_volnr];
-
-        // Go directly to the resource data - we've already parsed the header
-        res_file.seek(SeekFrom::Start(entry.entry.r_offset + 8))?;
-
-        let mut data: Vec<u8> = vec![ 0u8; entry.header.comp_size as usize ];
-        res_file.read(&mut data)?;
-
-        let info = resource::ResourceInfo{
-            compressed_size: entry.header.comp_size,
-            uncompressed_size: entry.header.decomp_size,
-            compression_method: entry.header.comp_method,
         };
-        Ok(resource::ResourceData{ info, data })
+
+        // Fetch resource header from resource.nnn file
+        res_file.seek(SeekFrom::Start(entry.r_offset))?;
+        let header = ResourceHeaderV0::parse(res_file)?;
+        if header.id != entry.r_id {
+            return Err(anyhow!("resource id mismatch: map has {}, resource.{:03} has {}", entry.r_id, entry.r_volnr, header.id));
+        }
+        map.insert(entry.r_id, resource::ResourceInfo{
+            compressed_size: header.comp_size,
+            uncompressed_size: header.decomp_size,
+            compression_method: header.comp_method,
+            volume: entry.r_volnr,
+            offset: entry.r_offset + 8
+        });
     }
 
-    fn get_entries(&self) -> Vec<&resource::ResourceID> {
-        self.map.keys().collect()
-    }
+    guess_sci_version(&mut map);
+    Ok(resource::ResourceMap::new(map, volumes))
 }
+

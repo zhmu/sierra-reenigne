@@ -5,27 +5,16 @@ use std::collections::hash_map::Entry;
 use std::fs::File;
 use std::path::Path;
 use std::io::{Read,Seek,SeekFrom,Cursor};
-use anyhow::{anyhow, Result, Context};
+use anyhow::{anyhow, Result};
 
 use crate::resource;
 
 const RESOURCE_MAP: &str = "resource.map";
 
-#[derive(Clone)]
-pub struct ResourceEntryV1 {
-    pub r_id: resource::ResourceID,
-    pub r_volnr: u8,
-    pub r_offset: u64
-}
-
-struct ResourceInfoV1 {
-    entry: ResourceEntryV1,
-    header: ResourceHeaderV1,
-}
-
-pub struct ResourceDataV1 {
-    pub header: ResourceHeaderV1,
-    pub data: Vec<u8>
+struct ResourceEntryV1 {
+    r_id: resource::ResourceID,
+    r_volnr: u8,
+    r_offset: u64
 }
 
 struct ResourceTypeOffsetV1 {
@@ -33,11 +22,11 @@ struct ResourceTypeOffsetV1 {
     offset: u16
 }
 
-pub struct ResourceHeaderV1 {
-    pub id: resource::ResourceID,
-    pub compressed_length: u16,
-    pub uncompressed_length: u16,
-    pub comp_method: resource::CompressionMethod
+struct ResourceHeaderV1 {
+    id: resource::ResourceID,
+    compressed_length: u16,
+    uncompressed_length: u16,
+    comp_method: resource::CompressionMethod
 }
 
 impl ResourceHeaderV1 {
@@ -127,74 +116,49 @@ fn parse_map_1_6(rdirectory: &ResourceDirectory, input: &[u8]) -> Result<Vec<Res
     Ok(entries)
 }
 
-pub struct ResourceMapV1 {
-    map: HashMap<resource::ResourceID, ResourceInfoV1>,
-    volumes: HashMap<u8, std::fs::File>
-}
+pub fn parse_v1(path: &Path) -> Result<resource::ResourceMap> {
+    let resource_map_data = std::fs::read(path.join(RESOURCE_MAP))?;
 
-impl ResourceMapV1 {
-    pub fn new(path: &Path) -> Result<ResourceMapV1> {
-        let resource_map_data = std::fs::read(path.join(RESOURCE_MAP))?;
+    let rdirectory = parse_resource_directory(&resource_map_data)?;
+    let entries;
+    if let Ok(e) = parse_map_1_5(&rdirectory, &resource_map_data) {
+        entries = e;
+    } else if let Ok(e) = parse_map_1_6(&rdirectory, &resource_map_data) {
+        entries = e;
+    } else {
+        return Err(anyhow!("unable to parse resource map"))
+    }
+    if entries.is_empty() {
+        return Err(anyhow!("no entries found"))
+    }
 
-        let rdirectory = parse_resource_directory(&resource_map_data)?;
-        let entries;
-        if let Ok(e) = parse_map_1_5(&rdirectory, &resource_map_data) {
-            entries = e;
-        } else if let Ok(e) = parse_map_1_6(&rdirectory, &resource_map_data) {
-            entries = e;
-        } else {
-            return Err(anyhow!("unable to parse resource map"))
-        }
-        if entries.is_empty() {
-            return Err(anyhow!("no entries found"))
-        }
-
-        let mut map: HashMap<resource::ResourceID, ResourceInfoV1> = HashMap::new();
-        let mut volumes: HashMap<u8, std::fs::File> = HashMap::new();
-        for entry in &entries {
-            // Obtain/open matching resource.nnn file
-            let res_file = match volumes.entry(entry.r_volnr) {
-                Entry::Occupied(o) => o.into_mut(),
-                Entry::Vacant(v) => {
-                    let resource_file = path.join(format!("resource.{:03}", entry.r_volnr));
-                    let res_file = File::open(&resource_file)?;
-                    v.insert(res_file)
-                }
-            };
-
-            // Fetch resource header from resource.nnn file
-            res_file.seek(SeekFrom::Start(entry.r_offset))?;
-            let header = ResourceHeaderV1::parse(res_file)?;
-            if header.id != entry.r_id {
-                return Err(anyhow!("resource id mismatch: map has {}, resource.{:03} has {}", entry.r_id, entry.r_volnr, header.id));
+    let mut map: HashMap<resource::ResourceID, resource::ResourceInfo> = HashMap::new();
+    let mut volumes: HashMap<u8, std::fs::File> = HashMap::new();
+    for entry in &entries {
+        // Obtain/open matching resource.nnn file
+        let res_file = match volumes.entry(entry.r_volnr) {
+            Entry::Occupied(o) => o.into_mut(),
+            Entry::Vacant(v) => {
+                let resource_file = path.join(format!("resource.{:03}", entry.r_volnr));
+                let res_file = File::open(&resource_file)?;
+                v.insert(res_file)
             }
-            map.insert(entry.r_id, ResourceInfoV1{ entry: entry.clone(), header });
-        }
-
-        Ok(ResourceMapV1{ map, volumes })
-    }
-}
-
-impl resource::ResourceMap for ResourceMapV1 {
-    fn read_resource(&self, rid: &resource::ResourceID) -> Result<resource::ResourceData> {
-        let entry = self.map.get(rid).context("resource not found")?;
-        let mut res_file = &self.volumes[&entry.entry.r_volnr];
-
-        // Go directly to the resource data - we've already parsed the header
-        res_file.seek(SeekFrom::Start(entry.entry.r_offset + 9))?;
-
-        let mut data: Vec<u8> = vec![ 0u8; entry.header.compressed_length as usize ];
-        res_file.read(&mut data)?;
-
-        let info = resource::ResourceInfo{
-            compressed_size: entry.header.compressed_length,
-            uncompressed_size: entry.header.uncompressed_length,
-            compression_method: entry.header.comp_method,
         };
-        Ok(resource::ResourceData{ info, data })
+
+        // Fetch resource header from resource.nnn file
+        res_file.seek(SeekFrom::Start(entry.r_offset))?;
+        let header = ResourceHeaderV1::parse(res_file)?;
+        if header.id != entry.r_id {
+            return Err(anyhow!("resource id mismatch: map has {}, resource.{:03} has {}", entry.r_id, entry.r_volnr, header.id));
+        }
+        map.insert(entry.r_id, resource::ResourceInfo{
+            compressed_size: header.compressed_length,
+            uncompressed_size: header.uncompressed_length,
+            compression_method: header.comp_method,
+            volume: entry.r_volnr,
+            offset: entry.r_offset + 9
+        });
     }
 
-    fn get_entries(&self) -> Vec<&resource::ResourceID> {
-        self.map.keys().collect()
-    }
+    Ok(resource::ResourceMap::new(map, volumes))
 }

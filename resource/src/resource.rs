@@ -1,6 +1,9 @@
-use anyhow::{Result};
 use std::fmt;
 use std::fmt::Formatter;
+use std::io::{Read, Seek, SeekFrom};
+
+use anyhow::{Result, Context};
+use std::collections::HashMap;
 
 #[derive(PartialEq,Eq,Hash,Clone,Copy)]
 pub enum ResourceType {
@@ -93,7 +96,9 @@ pub struct ResourceID {
 pub struct ResourceInfo {
     pub compressed_size: u16,
     pub uncompressed_size: u16,
-    pub compression_method: CompressionMethod
+    pub compression_method: CompressionMethod,
+    pub volume: u8,
+    pub offset: u64,
 }
 
 pub struct ResourceData {
@@ -160,7 +165,28 @@ impl fmt::Display for ResourceID {
     }
 }
 
-pub trait ResourceMap {
-    fn read_resource(&self, rid: &ResourceID) -> Result<ResourceData>;
-    fn get_entries(&self) -> Vec<&ResourceID>;
+pub struct ResourceMap {
+    map: HashMap<ResourceID, ResourceInfo>,
+    volumes: HashMap<u8, std::fs::File>
+}
+
+impl ResourceMap {
+    pub fn new(map: HashMap<ResourceID, ResourceInfo>, volumes: HashMap<u8, std::fs::File>) -> Self {
+        ResourceMap{ map, volumes }
+    }
+
+    pub fn read_resource(&self, rid: &ResourceID) -> Result<ResourceData> {
+        let entry = self.map.get(rid).context("resource not found")?;
+        let mut res_file = &self.volumes[&entry.volume];
+
+        res_file.seek(SeekFrom::Start(entry.offset))?;
+
+        let mut data: Vec<u8> = vec![ 0u8; entry.compressed_size as usize ];
+        res_file.read(&mut data)?;
+        Ok(ResourceData{ info: entry.clone(), data })
+    }
+
+    pub fn get_entries(&self) -> Vec<&ResourceID> {
+        self.map.keys().collect()
+    }
 }
