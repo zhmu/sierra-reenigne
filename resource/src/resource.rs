@@ -33,6 +33,8 @@ pub enum CompressionMethod {
     None,
     LZW,
     LZW1,
+    LZW1View,
+    LZW1Pic,
     Huffman,
     Implode,
     Unknown(u16)
@@ -73,6 +75,8 @@ impl CompressionMethod {
             0 => { CompressionMethod::None },
             1 => { CompressionMethod::LZW },
             2 => { CompressionMethod::Huffman},
+            3 => { CompressionMethod::LZW1View },
+            4 => { CompressionMethod::LZW1Pic },
             18 | 19 | 20 => { CompressionMethod::Implode },
             _ => { CompressionMethod::Unknown(value) }
         }
@@ -132,10 +136,21 @@ impl fmt::Display for CompressionMethod {
             CompressionMethod::None => { write!(f, "none") },
             CompressionMethod::LZW => { write!(f, "lzw") },
             CompressionMethod::LZW1 => { write!(f, "lzw1") },
+            CompressionMethod::LZW1View => { write!(f, "lzw1view") },
+            CompressionMethod::LZW1Pic => { write!(f, "lzw1pic") },
             CompressionMethod::Huffman => { write!(f, "huffman") },
             CompressionMethod::Implode => { write!(f, "implode") },
             CompressionMethod::Unknown(v) => { write!(f, "unk{}", v) }
         }
+    }
+}
+
+impl From<u16> for ResourceID {
+    fn from(id: u16) -> Self {
+        let rtype = ((id >> 11) & 0x7f) as u8;
+        let rtype = ResourceType::new(rtype);
+        let num = id & 0x7ff;
+        ResourceID{ num, rtype }
     }
 }
 

@@ -37,7 +37,7 @@ impl ResourceHeaderV0 {
         let decomp_size = rdr.read_u16::<LittleEndian>()?;
         let comp_method = rdr.read_u16::<LittleEndian>()?;
 
-        let id = convert_resourceid(id);
+        let id = resource::ResourceID::from(id);
         let comp_size = comp_size - 4;
         let comp_method = resource::CompressionMethod::new(comp_method);
         Ok(ResourceHeaderV0{ id, comp_size, decomp_size, comp_method })
@@ -47,13 +47,6 @@ impl ResourceHeaderV0 {
 pub struct ResourceMapV0 {
     map: HashMap<resource::ResourceID, ResourceInfoV0>,
     volumes: HashMap<u8, std::fs::File>
-}
-
-fn convert_resourceid(id: u16) -> resource::ResourceID {
-    let rtype = ((id >> 11) & 0x7f) as u8;
-    let rtype = resource::ResourceType::new(rtype);
-    let num = id & 0x7ff;
-    resource::ResourceID{ num, rtype }
 }
 
 fn parse_resource_map_v0(input: &[u8]) -> Result<Vec<ResourceEntryV0>> {
@@ -67,9 +60,8 @@ fn parse_resource_map_v0(input: &[u8]) -> Result<Vec<ResourceEntryV0>> {
             break
         }
 
-        let r_id = convert_resourceid(type_number);
         let entry = ResourceEntryV0{
-            r_id,
+            r_id: resource::ResourceID::from(type_number),
             r_volnr: (position >> 26) as u8,
             r_offset: (position & 0x3ffffff) as u64
         };
