@@ -19,7 +19,7 @@ fn get_pretty_address(script: &script::Script, address: u16, labels: &LabelMap) 
     return format!("0x{:x}", address).to_string();
 }
 
-fn disassemble_block(script: &script::Script, block: &script::ScriptBlock, labels: &LabelMap) {
+fn disassemble_block(script: &script::Script, block: &script::ScriptBlock, labels: &LabelMap, kernel_vocab: &Option<vocab::Vocab997>) {
     let disasm = disassemble::Disassembler::new(&block);
     for ins in disasm {
         let offset: u16 = ins.offset.try_into().unwrap();
@@ -60,6 +60,12 @@ fn disassemble_block(script: &script::Script, block: &script::ScriptBlock, label
             let pretty_address = get_pretty_address(&script, address, &labels);
             line += &format!(" # {}", &pretty_address).as_str();
         }
+        if ins.bytes[0] == 0x42 || ins.bytes[0] == 0x43 { /* callk */
+            if let Some(kernel_vocab) = kernel_vocab {
+                let kfunc = kernel_vocab.get_selector_name(ins.args[0] as usize);
+                line += &format!(" # {}", kfunc).as_str();
+            }
+        }
         println!("  {}", line);
     }
 }
@@ -89,7 +95,25 @@ fn decode_object_class(script: &script::Script, block: &script::ScriptBlock, sel
         } else {
             prop_name = "(???)";
         }
-        println!("    property {}. {} = {}", n, prop_name, prop.selector);
+        let value: String = match n {
+            object_class::SELECTOR_INDEX_SPECIES |
+            object_class::SELECTOR_INDEX_SUPERCLASS => {
+                match class_definitions.find_class(prop.selector) {
+                    Some(s) => { format!("{} ({})", s.name, prop.selector) }
+                    None => { format!("? ({})", prop.selector) }
+                }
+            },
+            object_class::SELECTOR_INDEX_NAME => {
+                match script.get_string(prop.selector as usize) {
+                    Some(s) => { format!("'{}' (0x{:x})", s, prop.selector) },
+                    None => { format!("0x{:x}", prop.selector) }
+                }
+            },
+            _ => {
+                format!("{}", prop.selector)
+            }
+        };
+        println!("    property {}. {} = {}", n, prop_name, value);
     }
 
     for (n, func) in object_class.functions.iter().enumerate() {
@@ -214,11 +238,25 @@ fn main() -> Result<()> {
     }
 
     let extract_path = &args[1];
+
     let script_id: i16 = args[2].parse().unwrap();
     let script_data = std::fs::read(format!("{}/script.{:03}", extract_path, script_id))?;
 
     let vocab_997_data = std::fs::read(format!("{}/vocab.997", extract_path))?;
     let selector_vocab = vocab::Vocab997::new(&vocab_997_data)?;
+
+    let kernel_vocab: Option<vocab::Vocab997>;
+    if let Ok(vocab_999_data) = std::fs::read(format!("{}/vocab.999", extract_path)) {
+        match vocab::Vocab997::new(&vocab_999_data) {
+            Ok(v) => { kernel_vocab = Some(v); },
+            Err(e) => {
+                println!("error: vocab.999 is corrupt: {}", e);
+                kernel_vocab = None;
+            }
+        }
+    } else {
+        kernel_vocab = None;
+    }
 
     let main_vocab: Option<vocab::Vocab000>;
     if let Ok(vocab_000_data) = std::fs::read(format!("{}/vocab.000", extract_path)) {
@@ -243,7 +281,7 @@ fn main() -> Result<()> {
     for block in &script.blocks {
         println!("block @ {:x} type {:?} size {}", block.base, block.r#type, block.data.len());
         match block.r#type {
-            script::BlockType::Code => { disassemble_block(&script, &block, &labels); }
+            script::BlockType::Code => { disassemble_block(&script, &block, &labels, &kernel_vocab); }
             script::BlockType::Object => { decode_object_class(&script, &block, &selector_vocab, &class_definitions, object_class::ObjectClassType::Object)?; }
             script::BlockType::Class => { decode_object_class(&script, &block, &selector_vocab, &class_definitions, object_class::ObjectClassType::Class)?; }
             script::BlockType::Said => {

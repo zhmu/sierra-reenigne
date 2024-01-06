@@ -4,10 +4,10 @@ use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::io::Cursor;
 
-const SELECTOR_INDEX_SPECIES: usize = 0;
-const SELECTOR_INDEX_SUPERCLASS: usize = 1;
-const _SELECTOR_INDEX_INFO: usize = 2;
-const SELECTOR_INDEX_NAME: usize = 3;
+pub const SELECTOR_INDEX_SPECIES: usize = 0;
+pub const SELECTOR_INDEX_SUPERCLASS: usize = 1;
+pub const SELECTOR_INDEX_INFO: usize = 2;
+pub const SELECTOR_INDEX_NAME: usize = 3;
 
 #[derive(Debug,Clone)]
 pub struct SelectorValue {
