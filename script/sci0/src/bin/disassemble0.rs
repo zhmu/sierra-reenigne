@@ -83,7 +83,13 @@ fn decode_object_class(script: &script::Script, block: &script::ScriptBlock, sel
     let property_vec = species_class.get_class_properties(selector_vocab);
 
     for (n, prop) in object_class.properties.iter().enumerate() {
-        println!("    property {}. {} = {}", n, property_vec[n].0, prop.selector);
+        let prop_name;
+        if n < property_vec.len() {
+            prop_name = property_vec[n].0.as_str();
+        } else {
+            prop_name = "(???)";
+        }
+        println!("    property {}. {} = {}", n, prop_name, prop.selector);
     }
 
     for (n, func) in object_class.functions.iter().enumerate() {
