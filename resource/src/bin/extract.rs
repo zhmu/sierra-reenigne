@@ -73,6 +73,7 @@ fn decompress(resource: &resource::ResourceData) -> DecompressResult {
         resource::CompressionMethod::None => {
             message = "None".to_string();
             output = resource.data.clone();
+            output.truncate(info.uncompressed_size as usize);
         },
         resource::CompressionMethod::Unknown(n) => {
             message = format!("unrecognized compression method {}", n);
