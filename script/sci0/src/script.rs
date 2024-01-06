@@ -1,5 +1,5 @@
 use std::io::{Cursor, Seek, SeekFrom};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::str;
 
@@ -63,14 +63,31 @@ impl<'a> Script<'a> {
                 break;
             }
 
-            let mut block_size = (rdr.read_u16::<LittleEndian>()? - 4) as usize;
+            let mut block_size = rdr.read_u16::<LittleEndian>()? as usize;
+            if block_size < 4 {
+                return Err(anyhow!("block size too small"));
+            }
+            block_size -= 4;
+
             let base = rdr.position() as usize;
             if base + block_size > input.len() {
                 println!("warning: block type {:?} with size {} too large, truncating to {}", block_type, block_size, input.len() - base);
                 block_size = input.len() - base
             }
             let block_data = &input[base..base + block_size];
-            rdr.seek(SeekFrom::Current(block_size as i64))?;
+
+            // If this is an object or class, look for the magic identifier. If
+            // it doesn't match, reject the script
+            if block_type == BlockType::Object || block_type == BlockType::Class {
+                if block_size < 8 { return Err(anyhow!("block too small to be a class/object block")); }
+                let magic = rdr.read_u16::<LittleEndian>()?;
+                if magic != 0x1234 {
+                    return Err(anyhow!("corrupt object/classs block (invalid magic)"));
+                }
+                rdr.seek(SeekFrom::Current(block_size as i64 - 2))?;
+            } else {
+                rdr.seek(SeekFrom::Current(block_size as i64))?;
+            }
 
             blocks.push(ScriptBlock{ r#type: block_type, base, data: block_data });
         }

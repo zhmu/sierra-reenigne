@@ -40,7 +40,7 @@ impl ObjectClass {
         let mut rdr = Cursor::new(&block.data);
         let block_magic = rdr.read_u16::<LittleEndian>()?;
         if block_magic != 0x1234 {
-            return Err(anyhow!("  corrupt object magic {:x}, skipping", block_magic));
+            return Err(anyhow!("corrupt object magic {:x}, skipping", block_magic));
         }
         let _local_var_offset = rdr.read_u16::<LittleEndian>()?;
         let _selector_list_offset = rdr.read_u16::<LittleEndian>()?;
@@ -81,15 +81,21 @@ impl ObjectClass {
             return Err(anyhow!("still unconsumed data (position {} != length {}), skipping", rdr.position(), rdr.get_ref().len()));
         }
 
-        let name_offset = properties[SELECTOR_INDEX_NAME].selector as usize;
+
+        // TODO QfG2 script.000 needs this workaround. This needs investigation.
         let name;
-        if name_offset == 0 {
-            name = "(nil)";
-        } else {
-            match script.get_string(name_offset) {
-                Some(x) => { name = x },
-                None => { return Err(anyhow!("string pointer out of range")); }
+        if SELECTOR_INDEX_NAME < properties.len() {
+            let name_offset = properties[SELECTOR_INDEX_NAME].selector as usize;
+            if name_offset == 0 {
+                name = "(nil)";
+            } else {
+                match script.get_string(name_offset) {
+                    Some(x) => { name = x },
+                    None => { return Err(anyhow!("string pointer out of range")); }
+                }
             }
+        } else {
+            name = "(?)";
         }
         Ok(ObjectClass{ name: name.to_string(), r#type: oc_type, properties, functions })
     }

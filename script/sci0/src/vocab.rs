@@ -100,13 +100,15 @@ impl Vocab996 {
     pub fn new(input: &[u8]) -> Result<Vocab996> {
         let mut classes: Vec<u16> = Vec::new();
 
+        // LSL3 has an odd vocab.996 resource: the last entry is incomplete
+        // and appears to be corrupt. Ensure we only process complete entries
         let mut rdr = Cursor::new(&input);
-        loop {
+        let num_classes = input.len() / 4;
+        for _ in 0..num_classes {
             let must_be_zero = rdr.read_u16::<LittleEndian>();
-            if must_be_zero .is_err() { break; }
+            if must_be_zero.is_err() { break; }
             assert_eq!(0, must_be_zero.unwrap());
             let script = rdr.read_u16::<LittleEndian>()?;
-
             classes.push(script);
         }
 
