@@ -216,8 +216,13 @@ fn main() -> Result<()> {
 
     let main_vocab: Option<vocab::Vocab000>;
     if let Ok(vocab_000_data) = std::fs::read(format!("{}/vocab.000", extract_path)) {
-        let v = vocab::Vocab000::new(&vocab_000_data)?;
-        main_vocab = Some(v);
+        match vocab::Vocab000::new(&vocab_000_data) {
+            Ok(v) => { main_vocab = Some(v); },
+            Err(e) => {
+                println!("error: vocab.000 is corrupt: {}", e);
+                main_vocab = None;
+            }
+        }
     } else {
         main_vocab = None;
     }

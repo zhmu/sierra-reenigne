@@ -52,7 +52,11 @@ impl Vocab000 {
 
             let mut cur_word: String;
             if let Some(prev_word) = &words.last() {
-                cur_word = prev_word.word[0..copy_amount].to_string();
+                if copy_amount > prev_word.word.len() {
+                    return Err(anyhow!("cannot copy {} bytes from previous word '{}'", copy_amount, prev_word.word));
+                } else {
+                    cur_word = prev_word.word[0..copy_amount].to_string();
+                }
             } else {
                 cur_word = "".to_string();
                 if copy_amount != 0 {
