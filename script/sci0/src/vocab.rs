@@ -10,20 +10,29 @@ pub struct Vocab997 {
 impl Vocab997 {
     pub fn new(input: &[u8]) -> Result<Vocab997> {
         let count = LittleEndian::read_u16(&input[0..=2]) as usize;
-
         let mut words: Vec<String> = Vec::with_capacity(count);
         for n in 0..count {
             let offset = LittleEndian::read_u16(&input[2 + n * 2..=4 + n * 2]) as usize;
             let length = LittleEndian::read_u16(&input[offset..=offset + 2]) as usize;
-            let s = str::from_utf8(&input[offset+2..offset+2+length]).unwrap();
-            words.push(s.to_string());
+            if offset + 2 + length < input.len() {
+                let s = str::from_utf8(&input[offset+2..offset+2+length]).unwrap();
+                words.push(s.to_string());
+            } else {
+                println!("warning: vocab997: offset {}..{} out of resource range, discarding index {}",
+                    offset + 2, offset + 2 + length, n);
+                words.push("(corrupt)".to_string());
+            }
         }
 
         Ok(Vocab997{ words })
     }
 
-    pub fn get_selector_name(&self, id: usize) -> &String {
-        &self.words[id]
+    pub fn get_selector_name(&self, id: usize) -> Option<&String> {
+        if id < self.words.len() {
+            Some(&self.words[id])
+        } else {
+            None
+        }
     }
 }
 
@@ -129,5 +138,44 @@ impl Vocab996 {
 
     pub fn get_number_of_classes(&self) -> usize {
         self.classes.len()
+    }
+}
+
+pub struct Vocab999 {
+    strings: Vec<String>
+}
+
+impl Vocab999 {
+    pub fn new(input: &[u8]) -> Result<Vocab999> {
+        // New-style vocab.999 simply contains words seperated by nul
+        // characters. We'll just start processing and if we find a charachter that's not
+        // in 1..0x7f, reject the vocab
+        let mut strings: Vec<String> = Vec::new();
+        let mut n: usize = 0;
+
+        let mut cur_string = String::new();
+        for ch in input {
+            match ch {
+                0x00 => {
+                    strings.push(cur_string.clone());
+                    cur_string.clear();
+                }
+                0x01..=0x7f => {
+                    cur_string.push(*ch as char);
+                },
+                _ => {
+                    return Err(anyhow!("found non-ascii char in vocab, rejecting"));
+                }
+            }
+        }
+        Ok(Vocab999{ strings })
+    }
+
+    pub fn get_string(&self, id: usize) -> Option<&String> {
+        if id < self.strings.len() {
+            Some(&self.strings[id])
+        } else {
+            None
+        }
     }
 }

@@ -112,8 +112,11 @@ impl ObjectClass {
         let mut result: Vec<(String, u16)> = Vec::new();
         for p in &self.properties {
             let selector = p.selector_id.unwrap();
-            let selector = selector_vocab.get_selector_name(selector as usize);
-            result.push(( selector.to_string(), p.selector ));
+            if let Some(selector) = selector_vocab.get_selector_name(selector as usize) {
+                result.push(( selector.to_string(), p.selector ));
+            } else {
+                result.push(( "(unknown)".to_string(), p.selector ));
+            }
         }
         result
     }

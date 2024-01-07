@@ -9,6 +9,22 @@ use std::env;
 
 type LabelMap = HashMap<u16, String>;
 
+enum KernelVocab {
+    None,
+    OldStyle(vocab::Vocab997),
+    NewStyle(vocab::Vocab999)
+}
+
+impl KernelVocab {
+    fn get_string(&self, index: usize) -> Option<&String> {
+        match self {
+            KernelVocab::None => None,
+            KernelVocab::OldStyle(v) => v.get_selector_name(index),
+            KernelVocab::NewStyle(v) => v.get_string(index)
+        }
+    }
+}
+
 fn get_pretty_address(script: &script::Script, address: u16, labels: &LabelMap) -> String {
     if let Some(label) = labels.get(&address) {
         return format!("{} ({:x})", label, address);
@@ -19,7 +35,7 @@ fn get_pretty_address(script: &script::Script, address: u16, labels: &LabelMap) 
     return format!("0x{:x}", address).to_string();
 }
 
-fn disassemble_block(script: &script::Script, block: &script::ScriptBlock, labels: &LabelMap, kernel_vocab: &Option<vocab::Vocab997>) {
+fn disassemble_block(script: &script::Script, block: &script::ScriptBlock, labels: &LabelMap, kernel_vocab: &KernelVocab) {
     let disasm = disassemble::Disassembler::new(&block);
     for ins in disasm {
         let offset: u16 = ins.offset.try_into().unwrap();
@@ -61,8 +77,7 @@ fn disassemble_block(script: &script::Script, block: &script::ScriptBlock, label
             line += &format!(" # {}", &pretty_address).as_str();
         }
         if ins.bytes[0] == 0x42 || ins.bytes[0] == 0x43 { /* callk */
-            if let Some(kernel_vocab) = kernel_vocab {
-                let kfunc = kernel_vocab.get_selector_name(ins.args[0] as usize);
+            if let Some(kfunc) = kernel_vocab.get_string(ins.args[0] as usize) {
                 line += &format!(" # {}", kfunc).as_str();
             }
         }
@@ -117,7 +132,11 @@ fn decode_object_class(script: &script::Script, block: &script::ScriptBlock, sel
     }
 
     for (n, func) in object_class.functions.iter().enumerate() {
-        println!("    function {}. selector '{}' ({:x}) offset {:x}", n, selector_vocab.get_selector_name(func.selector as usize), func.selector, func.offset);
+        let selector_name = match selector_vocab.get_selector_name(func.selector as usize) {
+            Some(v) => v,
+            None => "<unknown>"
+        };
+        println!("    function {}. selector '{}' ({:x}) offset {:x}", n, selector_name, func.selector, func.offset);
     }
     println!("  }}");
     Ok(())
@@ -165,7 +184,11 @@ fn generate_object_class_labels(block: &script::ScriptBlock, object_class: &obje
     labels.insert(obj_offset.try_into().unwrap(), label); // TODO need to add base offset here?
 
     for func in &object_class.functions {
-        let label = format!("{}::{}", object_class.name, selector_vocab.get_selector_name(func.selector as usize));
+        let selector_name = match selector_vocab.get_selector_name(func.selector as usize) {
+            Some(v) => v,
+            None => "<unknown>"
+        };
+        let label = format!("{}::{}", object_class.name, selector_name);
         labels.insert(func.offset.try_into().unwrap(), label); // TODO need to add base offset here?
     }
 }
@@ -245,17 +268,22 @@ fn main() -> Result<()> {
     let vocab_997_data = std::fs::read(format!("{}/vocab.997", extract_path))?;
     let selector_vocab = vocab::Vocab997::new(&vocab_997_data)?;
 
-    let kernel_vocab: Option<vocab::Vocab997>;
+    let kernel_vocab: KernelVocab;
     if let Ok(vocab_999_data) = std::fs::read(format!("{}/vocab.999", extract_path)) {
-        match vocab::Vocab997::new(&vocab_999_data) {
-            Ok(v) => { kernel_vocab = Some(v); },
+        match vocab::Vocab999::new(&vocab_999_data) {
+            Ok(v) => { kernel_vocab = KernelVocab::NewStyle(v); },
             Err(e) => {
-                println!("error: vocab.999 is corrupt: {}", e);
-                kernel_vocab = None;
+                match vocab::Vocab997::new(&vocab_999_data) {
+                    Ok(v) => { kernel_vocab = KernelVocab::OldStyle(v); },
+                    Err(e) => {
+                        println!("error: vocab.999 is corrupt: {}", e);
+                        kernel_vocab = KernelVocab::None;
+                    }
+                }
             }
         }
     } else {
-        kernel_vocab = None;
+        kernel_vocab = KernelVocab::None;
     }
 
     let main_vocab: Option<vocab::Vocab000>;
