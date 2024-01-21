@@ -1,11 +1,12 @@
 extern crate sciscript;
 
-use anyhow::Result;
-use sciscript::{opcode, disassemble, script, vocab, said, object_class, class_defs};
+use anyhow::{anyhow, Result};
+use sciscript::{opcode, disassemble, script, vocab, said, object_class, class_defs, script1};
 use std::collections::HashMap;
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::io::Cursor;
 use std::env;
+use clap::Parser;
 
 type LabelMap = HashMap<u16, String>;
 
@@ -22,6 +23,28 @@ impl KernelVocab {
             KernelVocab::OldStyle(v) => v.get_selector_name(index),
             KernelVocab::NewStyle(v) => v.get_string(index)
         }
+    }
+
+    fn get_strings(&self) -> &Vec<String> {
+        match self {
+            KernelVocab::None => todo!(),
+            KernelVocab::OldStyle(v) => v.get_strings(),
+            KernelVocab::NewStyle(v) => v.get_strings()
+        }
+    }
+}
+
+fn print_selectors(selector_vocab: &vocab::Vocab997) {
+    println!("selectors");
+    for (n, s) in selector_vocab.get_strings().iter().enumerate() {
+        println!("  {} - 0x{:x}. {}", n, n, s);
+    }
+}
+
+fn get_selector_name(selector_vocab: &vocab::Vocab997, index: u16) -> String {
+    match selector_vocab.get_selector_name(index as usize) {
+        Some(s) => s.clone(),
+        None => format!("#{}", index)
     }
 }
 
@@ -85,6 +108,56 @@ fn disassemble_block(script: &script::Script, block: &script::ScriptBlock, label
     }
 }
 
+fn disassemble_script1(script: &script1::Script1, kernel_vocab: &KernelVocab, labels: &LabelMap) {
+    let disasm = disassemble::Disassembler::new1(script.get_code_base(), script.get_code());
+    for ins in disasm {
+        let offset: u16 = ins.offset.try_into().unwrap();
+        if let Some(label) = labels.get(&offset) {
+            println!("{}:", label);
+        }
+
+        let mut line: String = format!("{:04x}: ", offset);
+        for n in ins.bytes {
+            line += &format!("{:02x}", n);
+        }
+        while line.len() < 20 {
+            line += &' '.to_string();
+        }
+        let opcode = &ins.opcode;
+        line += &format!("{}", opcode.name).to_string();
+        if !opcode.arg.is_empty() {
+            while line.len() < 30 {
+                line += &' '.to_string();
+            }
+            for (n, a_type) in opcode.arg.iter().enumerate() {
+                let a_value = ins.args[n];
+                match a_type {
+                    opcode::Arg::Imm8 | opcode::Arg::Imm16 => {
+                        line += &format!(" {}", a_value).to_string();
+                    }
+                    opcode::Arg::RelPos8 | opcode::Arg::RelPos16 => {
+                        let _j_offset = script::relpos0_to_absolute_offset(&ins);
+                        let pretty_address = "???"; // get_pretty_address(&script, j_offset, &labels);
+                        line += &format!(" {}", pretty_address).to_string();
+                    }
+                }
+            }
+        }
+
+        if ins.bytes[0] == 0x72 || ins.bytes[0] == 0x73 { /* lofsa */
+            let _address = ((offset as usize + ins.bytes.len() + ins.args[0] as usize) & 0xffff) as u16;
+            let pretty_address = "???"; // get_pretty_address(&script, address, &labels);
+            line += &format!(" # {}", &pretty_address).as_str();
+        }
+        if ins.bytes[0] == 0x42 || ins.bytes[0] == 0x43 { /* callk */
+            if let Some(kfunc) = kernel_vocab.get_string(ins.args[0] as usize) {
+                line += &format!(" # {}", kfunc).as_str();
+            }
+        }
+        println!("  {}", line);
+    }
+}
+
 fn decode_object_class(script: &script::Script, block: &script::ScriptBlock, selector_vocab: &vocab::Vocab997, class_definitions: &class_defs::ClassDefinitions, oc_type: object_class::ObjectClassType) -> Result<()> {
     let object_class = object_class::ObjectClass::new(&script, &block, oc_type.clone())?;
 
@@ -132,10 +205,7 @@ fn decode_object_class(script: &script::Script, block: &script::ScriptBlock, sel
     }
 
     for (n, func) in object_class.functions.iter().enumerate() {
-        let selector_name = match selector_vocab.get_selector_name(func.selector as usize) {
-            Some(v) => v,
-            None => "<unknown>"
-        };
+        let selector_name = get_selector_name(selector_vocab, func.selector);
         println!("    function {}. selector '{}' ({:x}) offset {:x}", n, selector_name, func.selector, func.offset);
     }
     println!("  }}");
@@ -184,10 +254,7 @@ fn generate_object_class_labels(block: &script::ScriptBlock, object_class: &obje
     labels.insert(obj_offset.try_into().unwrap(), label); // TODO need to add base offset here?
 
     for func in &object_class.functions {
-        let selector_name = match selector_vocab.get_selector_name(func.selector as usize) {
-            Some(v) => v,
-            None => "<unknown>"
-        };
+        let selector_name = get_selector_name(selector_vocab, func.selector);
         let label = format!("{}::{}", object_class.name, selector_name);
         labels.insert(func.offset.try_into().unwrap(), label); // TODO need to add base offset here?
     }
@@ -254,25 +321,178 @@ fn build_label_map(script: &script::Script, selector_vocab: &vocab::Vocab997, ma
     Ok(labels)
 }
 
-fn main() -> Result<()> {
-    let args: Vec<String> = env::args().collect();
-    if args.len() != 3 {
-        panic!("usage: {} out script_id", args[0]);
+fn build_label_map1(script: &script1::Script1, selector_vocab: &vocab::Vocab997) -> Result<LabelMap> {
+    let mut labels: LabelMap = LabelMap::new();
+    for (n, offset) in script.get_dispatch_offsets().iter().enumerate() {
+        let label = format!("dispatch_{}", n);
+        labels.insert(*offset, label);
+    }
+    for (n, obj) in script.get_items().iter().enumerate() {
+        for method in obj.get_methods() {
+            let selector_name = get_selector_name(selector_vocab, method.index);
+            let label = format!("object{}::{}", n, selector_name);
+            labels.insert(method.offset, label);
+        }
+    }
+    Ok(labels)
+}
+
+fn process_script0(script_id: i16, script_data: &[u8], selector_vocab: &vocab::Vocab997, kernel_vocab: &KernelVocab, class_definitions: &class_defs::ClassDefinitions, main_vocab: &Option<vocab::Vocab000>) -> Result<()> {
+    let script = script::Script::new(script_id, script_data)?;
+
+    let labels = build_label_map(&script, selector_vocab, main_vocab)?;
+    for block in &script.blocks {
+        println!("block @ {:x} type {:?} size {}", block.base, block.r#type, block.data.len());
+        match block.r#type {
+            script::BlockType::Code => { disassemble_block(&script, &block, &labels, &kernel_vocab); }
+            script::BlockType::Object => { decode_object_class(&script, &block, selector_vocab, class_definitions, object_class::ObjectClassType::Object)?; }
+            script::BlockType::Class => { decode_object_class(&script, &block, selector_vocab, class_definitions, object_class::ObjectClassType::Class)?; }
+            script::BlockType::Said => {
+                if let Some(vocab) = main_vocab {
+                    decode_said(&block, vocab)?;
+                } else {
+                    println!("*** Cannot decode said block, vocabulary not loaded");
+                }
+            },
+            _ => { dump_block(&script, &block)?; }
+        };
+        println!();
+    }
+    Ok(())
+}
+
+fn get_class_from_script1(script: &script1::Script1, class_id: u16) -> Option<&script1::Class1> {
+    for item in script.get_items() {
+        match item {
+            script1::ObjectOrClass::Class(class) => {
+                if class.get_class_id() == class_id {
+                    return Some(class);
+                }
+            },
+            _ => { }
+        }
+    }
+    None
+}
+
+fn process_script1(extract_path: &str, script: &script1::Script1, selector_vocab: &vocab::Vocab997, kernel_vocab: &KernelVocab, _main_vocab: &Option<vocab::Vocab000>, class_vocab: &vocab::Vocab996) -> Result<()> {
+/*
+    println!("local variables");
+    for (n, v) in script.get_locals().iter().enumerate() {
+        let v = *v as u32;
+        if v >= 0x8000 {
+            println!("  local_{} = {} (-{}, 0x{:x})", n, v, 65536 as u32 - v, v);
+        } else {
+            println!("  local_{} = {} (0x{:x})", n, v, v);
+        }
+    }
+*/
+
+    println!("\nOBJECTS/CLASSES\n");
+    for (n, item) in script.get_items().iter().enumerate() {
+        let super_class = item.get_super_class_id();
+        let super_script = get_script_for_class_id(extract_path, super_class, class_vocab);
+
+        match item {
+            script1::ObjectOrClass::Object(obj) => {
+                println!("object {} super_class {}", n, super_class);
+
+                if let Ok(super_script) = super_script {
+                    let super_class = get_class_from_script1(&super_script, super_class).expect("superclass not found");
+                    let super_properties = super_class.get_properties();
+
+                    // Safety
+                    assert_eq!(super_properties.len(), obj.get_property_values().len());
+
+                    println!("  property values");
+                    for (n, value) in obj.get_property_values().iter().enumerate() {
+                        if *value == super_properties[n].value { continue; }
+                        println!("    {}. {} = {} (was {})", n, get_selector_name(selector_vocab, super_properties[n].selector), value, super_properties[n].value);
+                    }
+                } else {
+                    todo!("object without superclass?");
+                }
+            },
+            script1::ObjectOrClass::Class(class) => {
+                println!("class {} super_class {}", n, super_class);
+
+                let properties = class.get_properties();
+
+                if let Ok(super_script) = super_script {
+                    let super_class = get_class_from_script1(&super_script, super_class).expect("superclass not found");
+                    let super_properties = super_class.get_properties();
+
+                    // Safety
+                    assert!(super_properties.len() <= class.get_properties().len());
+
+                    println!("  properties");
+                    for (n, class_prop) in properties.iter().enumerate() {
+                        let selector_name = get_selector_name(selector_vocab, class_prop.selector);
+                        if n < super_properties.len() && properties[n].value == super_properties[n].value { continue; }
+                        println!("    {}. {} = {}", n, selector_name, properties[n].value);
+                    }
+                } else {
+                    // This should only happen for RootObj ...
+                    println!("  properties [note: no superclass here?!]");
+                    for (n, class_prop) in properties.iter().enumerate() {
+                        let selector_name = get_selector_name(selector_vocab, class_prop.selector);
+                        println!("    {}. {} = {}", n, selector_name, properties[n].value);
+                    }
+                }
+            },
+        }
+
+        println!("  methods");
+        for (n, m) in item.get_methods().iter().enumerate() {
+            let selector_name = get_selector_name(selector_vocab, m.index);
+            println!("    {}. '{}' offset {:x}", n, selector_name, m.offset);
+        }
     }
 
-    let extract_path = &args[1];
+    let labels = build_label_map1(&script, selector_vocab)?;
+    println!("\nDISASSEMBLY\n");
+    disassemble_script1(&script, kernel_vocab, &labels);
+    Ok(())
+}
 
-    let script_id: i16 = args[2].parse().unwrap();
+fn load_sci1_script(extract_path: &str, script_id: u16) -> Result<script1::Script1> {
     let script_data = std::fs::read(format!("{}/script.{:03}", extract_path, script_id))?;
+    let heap_data = std::fs::read(format!("{}/heap.{:03}", extract_path, script_id))?;
+    script1::Script1::new(&script_data, &heap_data)
+}
+
+fn get_script_for_class_id(extract_path: &str, class_id: u16, class_vocab: &vocab::Vocab996) -> Result<script1::Script1> {
+    let script_id = class_vocab.get_script(class_id as u16).ok_or_else(|| anyhow!(format!("class id {} not found in vocab.996", class_id)))?;
+    load_sci1_script(extract_path, script_id)
+}
+
+/// Disassembles Sierra scripts
+#[derive(Parser)]
+struct Cli {
+    #[clap(short, long, default_value_t=false)]
+    sci1: bool,
+    /// Input directory
+    in_dir: String,
+    /// Script ID
+    script_id: i16
+}
+
+fn main() -> Result<()> {
+    let args = Cli::parse();
+
+    let extract_path = args.in_dir.as_str();
+    let script_id = args.script_id;
 
     let vocab_997_data = std::fs::read(format!("{}/vocab.997", extract_path))?;
     let selector_vocab = vocab::Vocab997::new(&vocab_997_data)?;
+    //print_selectors(&selector_vocab);
+    //todo!();
 
     let kernel_vocab: KernelVocab;
     if let Ok(vocab_999_data) = std::fs::read(format!("{}/vocab.999", extract_path)) {
         match vocab::Vocab999::new(&vocab_999_data) {
             Ok(v) => { kernel_vocab = KernelVocab::NewStyle(v); },
-            Err(e) => {
+            Err(_) => {
                 match vocab::Vocab997::new(&vocab_999_data) {
                     Ok(v) => { kernel_vocab = KernelVocab::OldStyle(v); },
                     Err(e) => {
@@ -301,28 +521,13 @@ fn main() -> Result<()> {
 
     let vocab_996_data = std::fs::read(format!("{}/vocab.996", extract_path))?;
     let class_vocab = vocab::Vocab996::new(&vocab_996_data)?;
-    let class_definitions = class_defs::ClassDefinitions::new(extract_path.to_string(), &class_vocab);
 
-    let script = script::Script::new(script_id, &script_data)?;
-
-    let labels = build_label_map(&script, &selector_vocab, &main_vocab)?;
-    for block in &script.blocks {
-        println!("block @ {:x} type {:?} size {}", block.base, block.r#type, block.data.len());
-        match block.r#type {
-            script::BlockType::Code => { disassemble_block(&script, &block, &labels, &kernel_vocab); }
-            script::BlockType::Object => { decode_object_class(&script, &block, &selector_vocab, &class_definitions, object_class::ObjectClassType::Object)?; }
-            script::BlockType::Class => { decode_object_class(&script, &block, &selector_vocab, &class_definitions, object_class::ObjectClassType::Class)?; }
-            script::BlockType::Said => {
-                if let Some(vocab) = &main_vocab {
-                    decode_said(&block, vocab)?;
-                } else {
-                    println!("*** Cannot decode said block, vocabulary not loaded");
-                }
-            },
-            _ => { dump_block(&script, &block)?; }
-        };
-        println!();
+    if args.sci1 {
+        let script1 = load_sci1_script(extract_path, script_id as u16)?;
+        process_script1(extract_path, &script1, &selector_vocab, &kernel_vocab, &main_vocab, &class_vocab)
+    } else {
+        let class_definitions = class_defs::ClassDefinitions::new(extract_path.to_string(), &class_vocab);
+        let script_data = std::fs::read(format!("{}/script.{:03}", extract_path, script_id))?;
+        process_script0(script_id, &script_data, &selector_vocab, &kernel_vocab, &class_definitions, &main_vocab)
     }
-
-    Ok(())
 }

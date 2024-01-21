@@ -13,14 +13,19 @@ pub struct Instruction<'a> {
 }
 
 pub struct Disassembler<'a> {
-    block: &'a script::ScriptBlock<'a>,
+    base: usize,
     rdr: Cursor<&'a [u8]>,
 }
 
 impl<'a> Disassembler<'a> {
     pub fn new(block: &'a script::ScriptBlock) -> Disassembler<'a> {
         let rdr = Cursor::new(block.data);
-        Disassembler{ block, rdr }
+        Disassembler{ base: block.base, rdr }
+    }
+
+    pub fn new1(base: usize, data: &'a [u8]) -> Disassembler<'a> {
+        let rdr = Cursor::new(data);
+        Disassembler{ base, rdr }
     }
 }
 
@@ -49,6 +54,6 @@ impl<'a> Iterator for Disassembler<'a> {
             }
         }
         let bytes = &self.rdr.get_ref()[offset..self.rdr.position() as usize];
-        Some(Instruction{ offset: self.block.base + offset, bytes, opcode, args })
+        Some(Instruction{ offset: self.base + offset, bytes, opcode, args })
     }
 }

@@ -34,6 +34,10 @@ impl Vocab997 {
             None
         }
     }
+
+    pub fn get_strings(&self) -> &Vec<String> {
+        &self.words
+    }
 }
 
 pub struct Word {
@@ -94,13 +98,7 @@ impl Vocab000 {
     }
 
     pub fn get_words_by_group(&self, group: u16) -> Vec<&Word> {
-        let mut result: Vec<&Word> = Vec::new();
-        for word in &self.words {
-            if word.group == group {
-                result.push(word);
-            }
-        }
-        result
+        self.words.iter().filter(|&w| w.group == group).collect::<Vec<_>>()
     }
 
 }
@@ -151,7 +149,6 @@ impl Vocab999 {
         // characters. We'll just start processing and if we find a charachter that's not
         // in 1..0x7f, reject the vocab
         let mut strings: Vec<String> = Vec::new();
-        let mut n: usize = 0;
 
         let mut cur_string = String::new();
         for ch in input {
@@ -177,5 +174,9 @@ impl Vocab999 {
         } else {
             None
         }
+    }
+
+    pub fn get_strings(&self) -> &Vec<String> {
+        &self.strings
     }
 }

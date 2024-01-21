@@ -123,10 +123,13 @@ pub fn relpos0_to_absolute_offset(ins: &disassemble::Instruction) -> u16
     let offset: usize = ins.offset as usize + ins.bytes.len();
     match a_type {
         opcode::Arg::RelPos8 => {
-            if (a_value & 0x80) != 0 {
-                panic!("implement signed bits here");
+            let j_offset: usize;
+            if (a_value & 0x80) == 0 {
+                j_offset = offset + a_value;
+            } else {
+                println!("is this correct (signed bits) ???");
+                j_offset = offset - (a_value & 0x7f);
             }
-            let j_offset: usize = offset + a_value;
             j_offset as u16
         }
         opcode::Arg::RelPos16 => {
