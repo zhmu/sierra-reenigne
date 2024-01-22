@@ -390,16 +390,18 @@ fn process_script1(extract_path: &str, script: &script1::Script1, selector_vocab
 
     println!("\nOBJECTS/CLASSES\n");
     for (n, item) in script.get_items().iter().enumerate() {
-        let super_class = item.get_super_class_id();
-        let super_script = get_script_for_class_id(extract_path, super_class, class_vocab);
+        let super_class_id = item.get_super_class_id();
+        let super_script = get_script_for_class_id(extract_path, super_class_id, class_vocab);
 
         match item {
             script1::ObjectOrClass::Object(obj) => {
-                println!("object {} super_class {}", n, super_class);
-
                 if let Ok(super_script) = super_script {
-                    let super_class = get_class_from_script1(&super_script, super_class).expect("superclass not found");
+                    let super_class = get_class_from_script1(&super_script, super_class_id).expect("superclass not found");
                     let super_properties = super_class.get_properties();
+
+                    let item_name = script.get_object_name(obj, super_class);
+                    let class_name = super_script.get_class_name(super_class);
+                    println!("{}: object {} super_class {}", n, item_name, class_name);
 
                     // Safety
                     assert_eq!(super_properties.len(), obj.get_property_values().len());
@@ -414,12 +416,13 @@ fn process_script1(extract_path: &str, script: &script1::Script1, selector_vocab
                 }
             },
             script1::ObjectOrClass::Class(class) => {
-                println!("class {} super_class {}", n, super_class);
+                let item_name = script.get_class_name(class);
+                println!("{}: class {} super_class {}", n, item_name, super_class_id);
 
                 let properties = class.get_properties();
 
                 if let Ok(super_script) = super_script {
-                    let super_class = get_class_from_script1(&super_script, super_class).expect("superclass not found");
+                    let super_class = get_class_from_script1(&super_script, super_class_id).expect("superclass not found");
                     let super_properties = super_class.get_properties();
 
                     // Safety

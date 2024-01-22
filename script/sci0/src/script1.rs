@@ -1,6 +1,7 @@
 use std::io::{Cursor, Seek, SeekFrom};
 use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, ReadBytesExt};
+use std::str;
 
 const OBJID_MAGIC: u16 = 0x1234; // magic value identifing a class/object
 const SCRIPT_OBJECT: u16 = 0xffff; // magic value identifing this as an objecvt
@@ -15,6 +16,8 @@ const INDEX_SUPER_CLASS: usize = 6; // -super-
 const _INDEX_INFO: usize = 7;
 
 const NUM_SYSTEM_PROPERTIES: u16 = 8;
+
+const SELECTOR_NAME: u16 = 20; // TODO look this up
 
 pub struct Method {
     pub index: u16,
@@ -175,6 +178,7 @@ fn load_script1(script_data: &[u8]) -> Result<Script1Data> {
 }
 
 struct Heap1Data {
+    heap: Vec<u8>,
     variables: Vec<u16>,
     items: Vec<ObjectOrClass>
 }
@@ -189,6 +193,11 @@ fn load_heap1(heap_data: &[u8], script1: &Script1Data) -> Result<Heap1Data> {
         let v = heap_curs.read_u16::<LittleEndian>()?;
         variables.push(v);
     }
+
+    // Copy heap - this discards the fixups (which we don't need)
+    let mut heap: Vec<u8> = Vec::with_capacity(fixup_offset );
+    heap.extend_from_slice(&heap_data[0..fixup_offset ]);
+    // TODO fixups (do we need them?)
 
     // Fixups
     heap_curs.seek(SeekFrom::Start(fixup_offset as u64))?;
@@ -208,7 +217,7 @@ fn load_heap1(heap_data: &[u8], script1: &Script1Data) -> Result<Heap1Data> {
             None => { break; }
         }
     }
-    Ok(Heap1Data{ variables, items })
+    Ok(Heap1Data{ heap, variables, items })
 }
 
 impl Script1 {
@@ -254,5 +263,33 @@ impl Script1 {
 
     pub fn get_items(&self) -> &Vec<ObjectOrClass> {
         &self.heap1.items
+    }
+
+    pub fn get_string(&self, offset: usize) -> &str {
+        // strings are on the heap
+        let data = &self.heap1.heap[offset..];
+        let nul_byte_end = data.iter()
+            .position(|&c| c == b'\0')
+            .unwrap_or(data.len());
+        str::from_utf8(&data[0..nul_byte_end]).unwrap_or("<corrupt>")
+    }
+
+    pub fn get_class_name(&self, class: &Class1) -> &str {
+        let props = class.get_properties();
+        if let Some(prop) = props.iter().find(|&p| p.selector == SELECTOR_NAME) {
+           self.get_string(prop.value.into())
+        } else {
+            "???"
+        }
+    }
+
+    pub fn get_object_name(&self, obj: &Object1, super_class: &Class1) -> &str {
+        let prop_vals = obj.get_property_values();
+        let superclass_props = super_class.get_properties();
+        if let Some(n) = superclass_props.iter().position(|p| p.selector == SELECTOR_NAME) {
+           self.get_string(prop_vals[n].into())
+        } else {
+            "???"
+        }
     }
 }
