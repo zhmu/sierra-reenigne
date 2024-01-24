@@ -2,7 +2,8 @@ use byteorder::ReadBytesExt;
 use std::io::Cursor;
 
 use anyhow::Result;
-use crate::{script, vocab};
+use crate::vocab;
+use crate::sci0::script0;
 
 fn said_operator_to_char(op: u8) -> char {
     match op {
@@ -30,7 +31,7 @@ pub struct Said {
 }
 
 impl Said {
-    pub fn new(block: &script::ScriptBlock, vocab: &vocab::Vocab000) -> Result<Said> {
+    pub fn new(block: &script0::ScriptBlock, vocab: &vocab::Vocab000) -> Result<Said> {
         let mut rdr = Cursor::new(&block.data);
         let mut current_position: usize = 0;
         let mut current_said: String = "".to_string();

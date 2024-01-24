@@ -1,5 +1,4 @@
 use crate::opcode;
-use crate::script;
 use std::io::Cursor;
 use byteorder::{ReadBytesExt, LittleEndian};
 
@@ -18,9 +17,9 @@ pub struct Disassembler<'a> {
 }
 
 impl<'a> Disassembler<'a> {
-    pub fn new(block: &'a script::ScriptBlock) -> Disassembler<'a> {
-        let rdr = Cursor::new(block.data);
-        Disassembler{ base: block.base, rdr }
+    pub fn new(base: usize, data: &'a [u8]) -> Disassembler<'a> {
+        let rdr = Cursor::new(data);
+        Disassembler{ base, rdr }
     }
 
     pub fn new1(base: usize, data: &'a [u8]) -> Disassembler<'a> {

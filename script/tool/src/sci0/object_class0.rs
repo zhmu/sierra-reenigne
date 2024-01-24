@@ -1,4 +1,5 @@
-use crate::{script, vocab};
+use crate::sci0::script0;
+use crate::vocab;
 
 use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -36,7 +37,7 @@ pub struct ObjectClass {
 }
 
 impl ObjectClass {
-    pub fn new(script: &script::Script, block: &script::ScriptBlock, oc_type: ObjectClassType) -> Result<ObjectClass> {
+    pub fn new(script: &script0::Script, block: &script0::ScriptBlock, oc_type: ObjectClassType) -> Result<ObjectClass> {
         let mut rdr = Cursor::new(&block.data);
         let block_magic = rdr.read_u16::<LittleEndian>()?;
         if block_magic != 0x1234 {
@@ -112,7 +113,7 @@ impl ObjectClass {
         let mut result: Vec<(String, u16)> = Vec::new();
         for p in &self.properties {
             let selector = p.selector_id.unwrap();
-            if let Some(selector) = selector_vocab.get_selector_name(selector as usize) {
+            if let Some(selector) = selector_vocab.get_strings().get(selector as usize) {
                 result.push(( selector.to_string(), p.selector ));
             } else {
                 result.push(( "(unknown)".to_string(), p.selector ));

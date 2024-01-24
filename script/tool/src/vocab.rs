@@ -27,14 +27,6 @@ impl Vocab997 {
         Ok(Vocab997{ words })
     }
 
-    pub fn get_selector_name(&self, id: usize) -> Option<&String> {
-        if id < self.words.len() {
-            Some(&self.words[id])
-        } else {
-            None
-        }
-    }
-
     pub fn get_strings(&self) -> &Vec<String> {
         &self.words
     }

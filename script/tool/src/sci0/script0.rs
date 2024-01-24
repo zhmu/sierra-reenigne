@@ -40,19 +40,19 @@ impl BlockType {
     }
 }
 
-pub struct ScriptBlock<'a> {
+pub struct ScriptBlock {
     pub r#type: BlockType,
     pub base: usize,
-    pub data: &'a [u8]
+    pub data: Vec<u8>
 }
 
-pub struct Script<'a> {
-    pub id: i16,
-    pub blocks: Vec<ScriptBlock<'a>>
+pub struct Script {
+    pub id: u16,
+    pub blocks: Vec<ScriptBlock>
 }
 
-impl<'a> Script<'a> {
-    pub fn new(id: i16, input: &'a [u8]) -> Result<Script<'a>> {
+impl Script {
+    pub fn new(id: u16, input: &[u8]) -> Result<Script> {
         let mut rdr = Cursor::new(&input);
 
         let mut blocks: Vec<ScriptBlock> = Vec::new();
@@ -74,7 +74,8 @@ impl<'a> Script<'a> {
                 println!("warning: block type {:?} with size {} too large, truncating to {}", block_type, block_size, input.len() - base);
                 block_size = input.len() - base
             }
-            let block_data = &input[base..base + block_size];
+            let mut block_data = Vec::<u8>::with_capacity(block_size);
+            block_data.extend_from_slice(&input[base..base + block_size]);
 
             // If this is an object or class, look for the magic identifier. If
             // it doesn't match, reject the script
@@ -82,7 +83,7 @@ impl<'a> Script<'a> {
                 if block_size < 8 { return Err(anyhow!("block too small to be a class/object block")); }
                 let magic = rdr.read_u16::<LittleEndian>()?;
                 if magic != 0x1234 {
-                    return Err(anyhow!("corrupt object/classs block (invalid magic)"));
+                    return Err(anyhow!("corrupt object/class block (invalid magic)"));
                 }
                 rdr.seek(SeekFrom::Current(block_size as i64 - 2))?;
             } else {
@@ -139,3 +140,9 @@ pub fn relpos0_to_absolute_offset(ins: &disassemble::Instruction) -> u16
         _ => { panic!("only to be called with relative positions"); }
     }
 }
+
+pub fn load_sci0_script(extract_path: &str, script_id: u16) -> Result<Script> {
+    let script_data = std::fs::read(format!("{}/script.{:03}", extract_path, script_id))?;
+    Script::new(script_id, &script_data)
+}
+

@@ -153,8 +153,8 @@ fn load_script1(script_data: &[u8]) -> Result<Script1Data> {
     // Script resource - this goes on the hunk
     let mut script = Cursor::new(&script_data);
     let fixup_offset  = script.read_u16::<LittleEndian>()? as usize;
-    let script_node_ptr = script.read_u16::<LittleEndian>()? as usize;
-    let far_text = script.read_u16::<LittleEndian>()?;
+    let _script_node_ptr = script.read_u16::<LittleEndian>()? as usize;
+    let _far_text = script.read_u16::<LittleEndian>()?;
 
     // Dispatches
     let num_dispatch = script.read_u16::<LittleEndian>()?;
@@ -293,3 +293,10 @@ impl Script1 {
         }
     }
 }
+
+pub fn load_sci1_script(extract_path: &str, script_id: u16) -> Result<Script1> {
+    let script_data = std::fs::read(format!("{}/script.{:03}", extract_path, script_id))?;
+    let heap_data = std::fs::read(format!("{}/heap.{:03}", extract_path, script_id))?;
+    Script1::new(&script_data, &heap_data)
+}
+

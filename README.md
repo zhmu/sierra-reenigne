@@ -23,4 +23,4 @@ All SCI games use a `RESOURCE.MAP` file, which details which resources are prese
 
 ### Script
 
-- [disassemble0](script/sci0/README.md): tool to disassemble SCI0 scripts
+- [disassemble0](script/tool/README.md): SCI0/SCI1 script tooling
