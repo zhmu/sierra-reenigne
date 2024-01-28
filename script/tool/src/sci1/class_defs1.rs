@@ -32,6 +32,10 @@ impl ClassDefinitions1 {
         Ok(ClassDefinitions1{ all_scripts, classes })
     }
 
+    pub fn get_class_ids(&self) -> Vec<u16> {
+        self.classes.iter().map(|(k, _)| *k).collect::<Vec<_>>()
+    }
+
     pub fn get_script(&self, script_id: u16) -> Option<&script1::Script1> {
         self.all_scripts.get(&script_id)
     }

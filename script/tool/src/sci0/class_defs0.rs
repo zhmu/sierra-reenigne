@@ -55,6 +55,10 @@ impl ClassDefinitions {
         ClassDefinitions{ definitions, certainly_props, certainly_funcs }
     }
 
+    pub fn get_class_ids(&self) -> Vec<u16> {
+        self.definitions.iter().map(|(k, _)| *k).collect::<Vec<_>>()
+    }
+
     pub fn find_class(&self, class_id: u16) -> Option<&object_class0::ObjectClass> {
         self.definitions.get(&class_id)
     }

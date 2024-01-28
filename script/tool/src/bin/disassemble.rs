@@ -7,15 +7,16 @@ use sciscript::sci1::{class_defs1, script1};
 use std::collections::HashMap;
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::io::Cursor;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 type LabelMap = HashMap<u16, String>;
 
-fn print_selectors(selector_vocab: &vocab::Vocab997) {
-    println!("selectors");
+fn print_selectors(extract_path: &str) -> Result<()> {
+    let selector_vocab = get_selectors(extract_path)?;
     for (n, s) in selector_vocab.get_strings().iter().enumerate() {
-        println!("  {} - 0x{:x}. {}", n, n, s);
+        println!("{} 0x{:x} {}", n, n, s);
     }
+    Ok(())
 }
 
 fn get_selector_name(selector_vocab: &vocab::Vocab997, index: u16) -> String {
@@ -454,6 +455,19 @@ fn process_script1(script: &script1::Script1, selector_vocab: &vocab::Vocab997, 
     Ok(())
 }
 
+#[derive(Subcommand)]
+enum CliCommand {
+    /// Decodes internal script.nnn structure
+    Decode {
+        /// Script to decode
+        script_id: u16
+    },
+    /// Display selector nams
+    Selectors { },
+    /// Display classes
+    Classes{ },
+}
+
 /// Disassembles Sierra scripts
 #[derive(Parser)]
 struct Cli {
@@ -461,22 +475,12 @@ struct Cli {
     sci1: bool,
     /// Input directory
     in_dir: String,
-    /// Script ID
-    script_id: i16
+    #[command(subcommand)]
+    command: CliCommand
 }
 
-fn main() -> Result<()> {
-    let args = Cli::parse();
-
-    let extract_path = args.in_dir.as_str();
-    let script_id = args.script_id;
-
-    let vocab_997_data = std::fs::read(format!("{}/vocab.997", extract_path))?;
-    let selector_vocab = vocab::Vocab997::new(&vocab_997_data)?;
-    //print_selectors(&selector_vocab);
-    //todo!();
-
-    let kernel_vocab = kcalls::load_kernel_vocab(extract_path);
+fn sci0_decode(extract_path: &str, script_id: u16, kernel_vocab: &kcalls::KernelVocab, selector_vocab: &vocab::Vocab997) -> Result<()> {
+    let class_definitions = sci0_get_class_defs(extract_path)?;
 
     let main_vocab: Option<vocab::Vocab000>;
     if let Ok(vocab_000_data) = std::fs::read(format!("{}/vocab.000", extract_path)) {
@@ -491,16 +495,94 @@ fn main() -> Result<()> {
         main_vocab = None;
     }
 
+    let script0 = script0::load_sci0_script(extract_path, script_id as u16)?;
+    process_script0(&script0, selector_vocab, &kernel_vocab, &class_definitions, &main_vocab)
+}
+
+fn sci0_get_class_defs(extract_path: &str)-> Result<class_defs0::ClassDefinitions> {
     let vocab_996_data = std::fs::read(format!("{}/vocab.996", extract_path))?;
     let class_vocab = vocab::Vocab996::new(&vocab_996_data)?;
+    Ok(class_defs0::ClassDefinitions::new(extract_path.to_string(), &class_vocab))
+}
+
+fn sci1_get_class_defs(extract_path: &str) -> Result<class_defs1::ClassDefinitions1> {
+    let vocab_996_data = std::fs::read(format!("{}/vocab.996", extract_path))?;
+    let class_vocab = vocab::Vocab996::new(&vocab_996_data)?;
+    class_defs1::ClassDefinitions1::new(extract_path, &class_vocab)
+}
+
+fn sci1_decode(extract_path: &str, script_id: u16, kernel_vocab: &kcalls::KernelVocab, selector_vocab: &vocab::Vocab997) -> Result<()> {
+    let class_definitions = sci1_get_class_defs(extract_path)?;
+    let script1 = script1::load_sci1_script(extract_path, script_id as u16)?;
+    process_script1(&script1, selector_vocab, &kernel_vocab, &class_definitions)
+}
+
+fn get_selectors(extract_path: &str) -> Result<vocab::Vocab997> {
+    let vocab_997_data = std::fs::read(format!("{}/vocab.997", extract_path))?;
+    vocab::Vocab997::new(&vocab_997_data)
+}
+
+fn decode(extract_path: &str, script_id: u16, args: &Cli) -> Result<()> {
+    let selector_vocab = get_selectors(extract_path)?;
+    let kernel_vocab = kcalls::load_kernel_vocab(extract_path);
 
     if args.sci1 {
-        let class_definitions = class_defs1::ClassDefinitions1::new(extract_path, &class_vocab)?;
-        let script1 = script1::load_sci1_script(extract_path, script_id as u16)?;
-        process_script1(&script1, &selector_vocab, &kernel_vocab, &class_definitions)
+        sci1_decode(extract_path, script_id, &kernel_vocab, &selector_vocab)
     } else {
-        let class_definitions = class_defs0::ClassDefinitions::new(extract_path.to_string(), &class_vocab);
-        let script0 = script0::load_sci0_script(extract_path, script_id as u16)?;
-        process_script0(&script0, &selector_vocab, &kernel_vocab, &class_definitions, &main_vocab)
+        sci0_decode(extract_path, script_id, &kernel_vocab, &selector_vocab)
+    }
+}
+
+fn sci0_print_classes(extract_path: &str) -> Result<()> {
+    let class_definitions = sci0_get_class_defs(extract_path)?;
+    for class_id in class_definitions.get_class_ids() {
+        match class_definitions.find_class(class_id) {
+            Some(obj_class) => {
+                println!("{} {}", class_id, obj_class.name);
+            },
+            None => { println!("unable to find class class {}, skipping", class_id); }
+        }
+    }
+    Ok(())
+}
+
+fn sci1_print_classes(extract_path: &str) -> Result<()> {
+    let class_definitions = sci1_get_class_defs(extract_path)?;
+    for class_id in class_definitions.get_class_ids() {
+        match class_definitions.get_script_for_class_id(class_id) {
+            Some(script) => {
+                let class = script.get_items().iter().filter(|x| match x { script1::ObjectOrClass::Class(cl) => cl.get_class_id() == class_id, _ => false }).next();
+                if let Some(class) = class {
+                    let class = match class { script1::ObjectOrClass::Class(class) => class, _ => { unreachable!(); } };
+                    let name = script.get_class_name(class);
+                    println!("{} {}", class_id, name);
+                } else {
+                    println!("warning: class {} is supposed to exist in script, but could not be found", class_id);
+                }
+            },
+            None => { println!("unable to load script for class {}, skipping", class_id); }
+        }
+    }
+    Ok(())
+}
+
+fn main() -> Result<()> {
+    let args = Cli::parse();
+    let extract_path = args.in_dir.as_str();
+
+    match args.command {
+        CliCommand::Decode{ script_id } => {
+            decode(extract_path, script_id, &args)
+        },
+        CliCommand::Selectors{ } => {
+            print_selectors(extract_path)
+        },
+        CliCommand::Classes{ } => {
+            if args.sci1 {
+                sci1_print_classes(extract_path)
+            } else {
+                sci0_print_classes(extract_path)
+            }
+        },
     }
 }
