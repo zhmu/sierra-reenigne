@@ -291,7 +291,7 @@ fn build_label_map1(script: &script1::Script1, class_definitions: &class_defs1::
     Ok(labels)
 }
 
-fn process_script0(script: &script0::Script, selector_vocab: &vocab::Vocab997, kernel_vocab: &kcalls::KernelVocab, class_definitions: &class_defs0::ClassDefinitions, main_vocab: &Option<vocab::Vocab000>) -> Result<()> {
+fn inspect_script0(script: &script0::Script, selector_vocab: &vocab::Vocab997, kernel_vocab: &kcalls::KernelVocab, class_definitions: &class_defs0::ClassDefinitions, main_vocab: &Option<vocab::Vocab000>) -> Result<()> {
     let labels = build_label_map(&script, selector_vocab, main_vocab)?;
     for block in &script.blocks {
         println!("block @ {:x} type {:?} size {}", block.base, block.r#type, block.data.len());
@@ -385,7 +385,7 @@ fn script1_find_item_code<'a>(script: &'a script1::Script1, item_index: usize, m
         .unwrap()
 }
 
-fn process_script1(script: &script1::Script1, selector_vocab: &vocab::Vocab997, kernel_vocab: &kcalls::KernelVocab, class_definitions: &class_defs1::ClassDefinitions1) -> Result<()> {
+fn inspect_script1(script: &script1::Script1, selector_vocab: &vocab::Vocab997, kernel_vocab: &kcalls::KernelVocab, class_definitions: &class_defs1::ClassDefinitions1) -> Result<()> {
 /*
     println!("local variables");
     for (n, v) in script.get_locals().iter().enumerate() {
@@ -479,8 +479,112 @@ fn process_script1(script: &script1::Script1, selector_vocab: &vocab::Vocab997, 
     Ok(())
 }
 
+fn decode_script1(script: &script1::Script1, selector_vocab: &vocab::Vocab997, kernel_vocab: &kcalls::KernelVocab, class_definitions: &class_defs1::ClassDefinitions1) -> Result<()> {
+
+    println!("locals {{");
+    for (n, v) in script.get_locals().iter().enumerate() {
+        let v = *v as u32;
+        if v >= 0x8000 {
+            println!("  {} = {}, // -{}, 0x{:x}", n, v, 65536 as u32 - v, v);
+        } else {
+            println!("  {} = {}, // 0x{:x}", n, v, v);
+        }
+    }
+    println!("}}\n");
+
+    let labels = build_label_map1(&script, class_definitions, selector_vocab)?;
+
+    for (item_index, item) in script.get_items().iter().enumerate() {
+        let super_class_id = item.get_super_class_id();
+        let super_script = class_definitions.get_script_for_class_id(super_class_id);
+
+        match item {
+            script1::ObjectOrClass::Object(obj) => {
+                if let Some(super_script) = super_script {
+                    let super_class = get_class_from_script1(&super_script, super_class_id).expect("superclass not found");
+                    let super_properties = super_class.get_properties();
+
+                    let item_name = script.get_object_name(obj, super_class);
+                    let class_name = super_script.get_class_name(super_class);
+                    println!("object {} : super_class {} {{", item_name, class_name);
+
+                    println!("  properties {{");
+                    for (n, value) in obj.get_property_values().iter().enumerate() {
+                        if *value == super_properties[n].value { continue; }
+                        println!("    {} = {}, // was {}", get_selector_name(selector_vocab, super_properties[n].selector), value, super_properties[n].value);
+                    }
+                    println!("  }}\n");
+                } else {
+                    println!("// {}: <script for superclass {} in object is not available>, skipped", item_index, item.get_super_class_id());
+
+                }
+            },
+            script1::ObjectOrClass::Class(class) => {
+                let item_name = script.get_class_name(class);
+                println!("class {} : super_class {} {{", item_name, super_class_id);
+
+                let properties = class.get_properties();
+
+                if let Some(super_script) = super_script {
+                    let super_class = get_class_from_script1(&super_script, super_class_id).expect("superclass not found");
+                    let super_properties = super_class.get_properties();
+
+                    // Safety
+                    assert!(super_properties.len() <= class.get_properties().len());
+
+                    println!("  properties {{");
+                    for (n, class_prop) in properties.iter().enumerate() {
+                        let selector_name = get_selector_name(selector_vocab, class_prop.selector);
+                        if n < super_properties.len() && properties[n].value == super_properties[n].value { continue; }
+                        println!("    {} = {}, // {}", selector_name, properties[n].value, n);
+                    }
+                    println!("  }}");
+                } else {
+                    // This should only happen for RootObj ...
+                    println!("  // note: no superclass here?");
+                    println!("  properties {{");
+                    for (n, class_prop) in properties.iter().enumerate() {
+                        let selector_name = get_selector_name(selector_vocab, class_prop.selector);
+                        println!("    {} = {}, //", selector_name, properties[n].value);
+                    }
+                    println!("  }}");
+                }
+            },
+        }
+
+        println!("  methods {{");
+        for (method_index, m) in item.get_methods().iter().enumerate() {
+            let selector_name = get_selector_name(selector_vocab, m.index);
+            println!("    {} {{", selector_name);
+
+            let code = script1_find_item_code(&script, item_index, method_index);
+            disassemble_script1_code(&script, kernel_vocab, &labels, code);
+            println!("    }}\n");
+        }
+        println!("  }}");
+        println!("}}\n");
+    }
+    println!("dispatches {{");
+    for code in script.get_code() {
+        match code {
+            script1::Code::Dispatch(..) => {
+                // Note: dispatch offset is part of labels and will be printed
+                disassemble_script1_code(&script, kernel_vocab, &labels, code);
+            },
+            _ => { }
+        }
+    }
+    println!("}}");
+    Ok(())
+}
+
 #[derive(Subcommand)]
 enum CliCommand {
+    /// Inspects given script
+    Inspect {
+        /// Script to decode
+        script_id: u16
+    },
     /// Decodes internal script.nnn structure
     Decode {
         /// Script to decode
@@ -514,7 +618,7 @@ struct Cli {
     command: CliCommand
 }
 
-fn sci0_decode(extract_path: &str, script_id: u16, kernel_vocab: &kcalls::KernelVocab, selector_vocab: &vocab::Vocab997) -> Result<()> {
+fn sci0_inspect(extract_path: &str, script_id: u16, kernel_vocab: &kcalls::KernelVocab, selector_vocab: &vocab::Vocab997) -> Result<()> {
     let class_definitions = sci0_get_class_defs(extract_path)?;
 
     let main_vocab: Option<vocab::Vocab000>;
@@ -531,7 +635,7 @@ fn sci0_decode(extract_path: &str, script_id: u16, kernel_vocab: &kcalls::Kernel
     }
 
     let script0 = script0::load_sci0_script(extract_path, script_id as u16)?;
-    process_script0(&script0, selector_vocab, &kernel_vocab, &class_definitions, &main_vocab)
+    inspect_script0(&script0, selector_vocab, &kernel_vocab, &class_definitions, &main_vocab)
 }
 
 fn sci0_get_class_defs(extract_path: &str)-> Result<class_defs0::ClassDefinitions> {
@@ -547,15 +651,21 @@ fn sci1_get_class_defs(extract_path: &str, load_externals: bool) -> Result<class
     class_defs1::ClassDefinitions1::new(class_extract_path, &class_vocab)
 }
 
-fn sci1_decode(extract_path: &str, script_id: u16, kernel_vocab: &kcalls::KernelVocab, selector_vocab: &vocab::Vocab997, no_externals: bool) -> Result<()> {
+fn sci1_inspect(extract_path: &str, script_id: u16, kernel_vocab: &kcalls::KernelVocab, selector_vocab: &vocab::Vocab997, no_externals: bool) -> Result<()> {
     let class_definitions = sci1_get_class_defs(extract_path, !no_externals)?;
     let script1 = script1::load_sci1_script(extract_path, script_id as u16)?;
-    process_script1(&script1, selector_vocab, &kernel_vocab, &class_definitions)
+    inspect_script1(&script1, selector_vocab, &kernel_vocab, &class_definitions)
 }
 
 fn get_selectors(extract_path: &str) -> Result<vocab::Vocab997> {
     let vocab_997_data = std::fs::read(format!("{}/vocab.997", extract_path))?;
     vocab::Vocab997::new(&vocab_997_data)
+}
+
+fn sci1_decode(extract_path: &str, script_id: u16, kernel_vocab: &kcalls::KernelVocab, selector_vocab: &vocab::Vocab997, no_externals: bool) -> Result<()> {
+    let class_definitions = sci1_get_class_defs(extract_path, !no_externals)?;
+    let script1 = script1::load_sci1_script(extract_path, script_id as u16)?;
+    decode_script1(&script1, selector_vocab, &kernel_vocab, &class_definitions)
 }
 
 fn decode(extract_path: &str, script_id: u16, args: &Cli, no_externals: bool) -> Result<()> {
@@ -565,7 +675,18 @@ fn decode(extract_path: &str, script_id: u16, args: &Cli, no_externals: bool) ->
     if args.sci1 {
         sci1_decode(extract_path, script_id, &kernel_vocab, &selector_vocab, no_externals)
     } else {
-        sci0_decode(extract_path, script_id, &kernel_vocab, &selector_vocab)
+        todo!("not implemented for sci0");
+    }
+}
+
+fn inspect(extract_path: &str, script_id: u16, args: &Cli, no_externals: bool) -> Result<()> {
+    let selector_vocab = get_selectors(extract_path)?;
+    let kernel_vocab = kcalls::load_kernel_vocab(extract_path);
+
+    if args.sci1 {
+        sci1_inspect(extract_path, script_id, &kernel_vocab, &selector_vocab, no_externals)
+    } else {
+        sci0_inspect(extract_path, script_id, &kernel_vocab, &selector_vocab)
     }
 }
 
@@ -752,6 +873,9 @@ fn main() -> Result<()> {
     let extract_path = args.in_dir.as_str();
 
     match args.command {
+        CliCommand::Inspect{ script_id } => {
+            inspect(extract_path, script_id, &args, args.no_externals)
+        },
         CliCommand::Decode{ script_id } => {
             decode(extract_path, script_id, &args, args.no_externals)
         },
