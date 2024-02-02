@@ -4,7 +4,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use std::str;
 
 const OBJID_MAGIC: u16 = 0x1234; // magic value identifing a class/object
-const SCRIPT_OBJECT: u16 = 0xffff; // magic value identifing this as an objecvt
+const SCRIPT_OBJECT: u16 = 0xffff; // magic value identifing this as an object
 
 const INDEX_OBJID: usize = 0; // -objID-
 const INDEX_SIZE: usize = 1; // -size-
@@ -93,15 +93,22 @@ pub enum ObjectOrClass {
 fn parse_object_class(rdr: &mut Cursor<&[u8]>, script1: &Script1Data) -> Result<Option<ObjectOrClass>> {
     // Every object/class must contain at least all system properties, so fetch
     // these first
+    let initial_position = rdr.position();
     let mut property_values = Vec::<u16>::with_capacity(NUM_SYSTEM_PROPERTIES.into());
     for _ in 0..NUM_SYSTEM_PROPERTIES {
         let value = rdr.read_u16::<LittleEndian>();
-        if value.is_err() { return Ok(None); }
+        if value.is_err() {
+            rdr.seek(SeekFrom::Start(initial_position))?;
+            return Ok(None);
+        }
         property_values.push(value.unwrap());
     }
 
     // objID, must be magic value (-objid-)
-    if property_values[INDEX_OBJID] != OBJID_MAGIC { return Ok(None); }
+    if property_values[INDEX_OBJID] != OBJID_MAGIC {
+        rdr.seek(SeekFrom::Start(initial_position))?;
+        return Ok(None);
+    }
     let size = property_values[INDEX_SIZE];
     if size < NUM_SYSTEM_PROPERTIES { return Err(anyhow!("invalid -size- value of {}", size)); }
 
@@ -146,6 +153,7 @@ fn parse_object_class(rdr: &mut Cursor<&[u8]>, script1: &Script1Data) -> Result<
     Ok(Some(ObjectOrClass::Class(class)))
 }
 
+#[derive(Debug)]
 pub enum Code {
     Method(u16, u16, usize, usize),
     Dispatch(u16, u16, usize),
@@ -176,9 +184,14 @@ pub struct Script1 {
     code: Vec<Code>
 }
 
+pub enum Dispatch {
+    Offset(u16),
+    Invalid(u16)
+}
+
 struct Script1Data {
     hunk: Vec<u8>,
-    dispatch_offsets: Vec<u16>,
+    dispatches: Vec<Dispatch>,
     fixup_offsets: Vec<u16>,
     far_text_flag: u16
 }
@@ -202,6 +215,19 @@ fn load_script1(script_data: &[u8]) -> Result<Script1Data> {
 
     // Dispatches
     let dispatch_offsets = read_u16_array(&mut script)?;
+    let mut dispatches = Vec::<Dispatch>::with_capacity(dispatch_offsets.len());
+    for (n, offset) in dispatch_offsets.iter().enumerate() {
+        // Note: QfG3 script.034 seems to contain dispatch offsets to items
+        // on the heap (the uhuraTalker / Uhuru objects) - I have no idea
+        // which purpose this serves
+        let offs = *offset as usize;
+        if offs >= (8 + dispatch_offsets.len() * 2) && offs < fixup_offset {
+            dispatches.push(Dispatch::Offset(*offset));
+        } else {
+            println!("warning: encountered out-of-range dispatch {} offset {:x}", n, offs);
+            dispatches.push(Dispatch::Invalid(*offset));
+        }
+    }
 
     // Copy script to the hunk - this discards the fixups (which are't part of
     // the script data)
@@ -211,11 +237,12 @@ fn load_script1(script_data: &[u8]) -> Result<Script1Data> {
     // Read fixups
     script.seek(SeekFrom::Start(fixup_offset  as u64))?;
     let fixup_offsets = read_u16_array(&mut script)?;
-    Ok(Script1Data{ hunk, dispatch_offsets, fixup_offsets, far_text_flag } )
+    Ok(Script1Data{ hunk, dispatches, fixup_offsets, far_text_flag } )
 }
 
 struct Heap1Data {
-    heap: Vec<u8>,
+    data: Vec<u8>,
+    data_offset: usize,
     variables: Vec<u16>,
     items: Vec<ObjectOrClass>,
     fixup_offsets: Vec<u16>,
@@ -236,14 +263,17 @@ fn load_heap1(heap_data: &[u8], script1: &Script1Data) -> Result<Heap1Data> {
         }
     }
 
-    // Copy heap - this discards the fixups (which aren't part of the heap data)
-    let mut heap: Vec<u8> = Vec::with_capacity(fixup_offset);
-    heap.extend_from_slice(&heap_data[0..fixup_offset]);
+    // The current offset didn't contain an object/class - data starts here
+    let data_offset = heap_curs.position() as usize;
+
+    // Copy heap data
+    let mut data: Vec<u8> = Vec::with_capacity(fixup_offset - data_offset);
+    data.extend_from_slice(&heap_data[data_offset..fixup_offset]);
 
     // Fixups
     heap_curs.seek(SeekFrom::Start(fixup_offset as u64))?;
     let fixup_offsets = read_u16_array(&mut heap_curs)?;
-    Ok(Heap1Data{ heap, variables, items, fixup_offsets })
+    Ok(Heap1Data{ data, data_offset, variables, items, fixup_offsets })
 }
 
 impl Script1 {
@@ -265,8 +295,10 @@ impl Script1 {
         }
 
         // Add dispatches
-        for (n, offs) in script1.dispatch_offsets.iter().enumerate() {
-            code.push(Code::Dispatch(*offs, 0, n));
+        for (n, d) in script1.dispatches.iter().enumerate() {
+            if let Dispatch::Offset(offs) = d {
+                code.push(Code::Dispatch(*offs, 0, n));
+            }
         }
 
         // Add final offset
@@ -289,8 +321,8 @@ impl Script1 {
         self.script1.far_text_flag
     }
 
-    pub fn get_dispatch_offsets(&self) -> &Vec<u16> {
-        &self.script1.dispatch_offsets
+    pub fn get_dispatches(&self) -> &Vec<Dispatch> {
+        &self.script1.dispatches
     }
 
     pub fn get_script_fixup_offsets(&self) -> &Vec<u16> {
@@ -303,6 +335,10 @@ impl Script1 {
 
     pub fn get_code(&self) -> &Vec<Code> {
         &self.code
+    }
+
+    pub fn get_data(&self) -> &[u8] {
+        &self.heap1.data
     }
 
     pub fn get_hunk(&self) -> &[u8] {
@@ -318,8 +354,9 @@ impl Script1 {
     }
 
     pub fn get_string(&self, offset: usize) -> &str {
+        assert!(offset >= self.heap1.data_offset);
         // strings are on the heap
-        let data = &self.heap1.heap[offset..];
+        let data = &self.heap1.data[offset - self.heap1.data_offset..];
         let nul_byte_end = data.iter()
             .position(|&c| c == b'\0')
             .unwrap_or(data.len());
@@ -349,5 +386,6 @@ impl Script1 {
 pub fn load_sci1_script(extract_path: &str, script_id: u16) -> Result<Script1> {
     let script_data = std::fs::read(format!("{}/script.{:03}", extract_path, script_id))?;
     let heap_data = std::fs::read(format!("{}/heap.{:03}", extract_path, script_id))?;
+    println!(">> loading script {}", script_id);
     Script1::new(&script_data, &heap_data)
 }

@@ -254,9 +254,11 @@ fn build_label_map(script: &script0::Script, selector_vocab: &vocab::Vocab997, m
 
 fn build_label_map1(script: &script1::Script1, class_definitions: &class_defs1::ClassDefinitions1, selector_vocab: &vocab::Vocab997) -> Result<LabelMap> {
     let mut labels: LabelMap = LabelMap::new();
-    for (n, offset) in script.get_dispatch_offsets().iter().enumerate() {
-        let label = format!("dispatch_{}", n);
-        labels.insert(*offset, label);
+    for (n, dispatch) in script.get_dispatches().iter().enumerate() {
+        if let script1::Dispatch::Offset(offset) = dispatch {
+            let label = format!("dispatch_{}", n);
+            labels.insert(*offset, label);
+        }
     }
     for (n, item) in script.get_items().iter().enumerate() {
         let super_class_id = item.get_super_class_id();
@@ -649,17 +651,25 @@ fn recode_script1(script: &script1::Script1, selector_vocab: &vocab::Vocab997, k
     }
 
     // Script: Dispatches
-    let dispatches = script.get_dispatch_offsets();
+    let dispatches = script.get_dispatches();
     script_out.write_u16::<LittleEndian>(dispatches.len() as u16)?;
-    for offset in dispatches {
-        script_out.write_u16::<LittleEndian>(*offset)?;
+    for dispatch in dispatches {
+        let offset = match dispatch {
+            script1::Dispatch::Offset(offs) => *offs,
+            script1::Dispatch::Invalid(offs) => *offs,
+        };
+        script_out.write_u16::<LittleEndian>(offset)?;
     }
 
     // Object/classes
     for item in script.get_items() {
         match item {
-            script1::ObjectOrClass::Object(_obj) => {
-                todo!();
+            script1::ObjectOrClass::Object(obj) => {
+                // Write property values to the heap
+                let properties = obj.get_property_values();
+                for value in properties {
+                    heap_out.write_u16::<LittleEndian>(*value)?;
+                }
             },
             script1::ObjectOrClass::Class(class) => {
                 // Write property values to the heap
@@ -690,7 +700,8 @@ fn recode_script1(script: &script1::Script1, selector_vocab: &vocab::Vocab997, k
         script_out.write(opcodes)?;
     }
 
-    // TODO Write all strings to the heap!
+    // Write data to heap
+    heap_out.write(script.get_data())?;
 
     // TODO For now, copy all the script fixups - we need to construct
     // these
