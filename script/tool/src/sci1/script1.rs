@@ -363,6 +363,27 @@ impl Script1 {
         str::from_utf8(&data[0..nul_byte_end]).unwrap_or("<corrupt>")
     }
 
+    pub fn get_class_by_id(&self, class_id: u16) -> Option<&Class1> {
+        for item in self.get_items() {
+            match item {
+                ObjectOrClass::Class(class) => {
+                    if class.get_class_id() == class_id {
+                        return Some(class);
+                    }
+                },
+                _ => { }
+            }
+        }
+        None
+    }
+
+    pub fn find_item_by_code(&self, item_index: usize, method_index: usize) -> &Code {
+        self.get_code().iter()
+            .filter(|c| match c { Code::Method(_, _, i_idx, m_idx) => { *i_idx == item_index && *m_idx == method_index }, _ => false })
+            .next()
+            .unwrap()
+    }
+
     pub fn get_class_name(&self, class: &Class1) -> &str {
         let props = class.get_properties();
         if let Some(prop) = props.iter().find(|&p| p.selector == SELECTOR_NAME) {
