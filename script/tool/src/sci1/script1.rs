@@ -21,7 +21,7 @@ const SELECTOR_NAME: u16 = 20; // TODO look this up
 
 pub struct Method {
     pub index: u16,
-    pub offset: u16
+    pub offset: u16,
 }
 
 pub struct Property {
@@ -53,6 +53,13 @@ impl ObjectOrClass {
         match self {
             ObjectOrClass::Object(obj) => &obj.methods,
             ObjectOrClass::Class(class) => &class.methods
+        }
+    }
+
+    pub fn get_mut_methods(&mut self) -> &mut Vec<Method> {
+        match self {
+            ObjectOrClass::Object(obj) => &mut obj.methods,
+            ObjectOrClass::Class(class) => &mut class.methods
         }
     }
 
@@ -139,77 +146,88 @@ fn parse_object_class(rdr: &mut Cursor<&[u8]>, script1: &Script1Data) -> Result<
     Ok(Some(ObjectOrClass::Class(class)))
 }
 
+pub enum Code {
+    Method(u16, u16, usize, usize),
+    Dispatch(u16, u16, usize),
+    Final(u16),
+}
+
+impl Code {
+    pub fn get_offset(&self) -> u16 {
+        match self {
+            Code::Method(offs, _, _, _) => *offs,
+            Code::Dispatch(offs, _, _) => *offs,
+            Code::Final(offs) => *offs,
+        }
+    }
+
+    pub fn get_length(&self) -> u16 {
+        match self {
+            Code::Method(_, len, _, _) => *len,
+            Code::Dispatch(_, len, _) => *len,
+            Code::Final(_) => 0,
+        }
+    }
+}
+
 pub struct Script1 {
     script1: Script1Data,
-    heap1: Heap1Data
+    heap1: Heap1Data,
+    code: Vec<Code>
 }
 
 struct Script1Data {
     hunk: Vec<u8>,
-    dispatch_offsets: Vec<u16>
+    dispatch_offsets: Vec<u16>,
+    fixup_offsets: Vec<u16>,
+    far_text_flag: u16
+}
+
+fn read_u16_array(rdr: &mut Cursor<&[u8]>) -> Result<Vec<u16>> {
+    let count = rdr.read_u16::<LittleEndian>()? as usize;
+    let mut values = Vec::<u16>::with_capacity(count);
+    for _ in 0..count {
+        let fixup = rdr.read_u16::<LittleEndian>()?;
+        values.push(fixup);
+    }
+    Ok(values)
 }
 
 fn load_script1(script_data: &[u8]) -> Result<Script1Data> {
     // Script resource - this goes on the hunk
-    let mut script = Cursor::new(&script_data);
-    let fixup_offset  = script.read_u16::<LittleEndian>()? as usize;
+    let mut script = Cursor::new(script_data);
+    let fixup_offset = script.read_u16::<LittleEndian>()? as usize;
     let _script_node_ptr = script.read_u16::<LittleEndian>()? as usize;
-    let _far_text = script.read_u16::<LittleEndian>()?;
+    let far_text_flag = script.read_u16::<LittleEndian>()?;
 
     // Dispatches
-    let num_dispatch = script.read_u16::<LittleEndian>()?;
-    let mut dispatch_offsets: Vec<u16> = Vec::new();
-    for _ in 0..num_dispatch {
-        let dispatch_offset = script.read_u16::<LittleEndian>()?;
-        dispatch_offsets.push(dispatch_offset);
-    }
+    let dispatch_offsets = read_u16_array(&mut script)?;
 
-    // Copy script to the hunk - this discards the fixups (which we don't need)
+    // Copy script to the hunk - this discards the fixups (which are't part of
+    // the script data)
     let mut hunk: Vec<u8> = Vec::with_capacity(fixup_offset );
     hunk.extend_from_slice(&script_data[0..fixup_offset ]);
-    // TODO fixups (do we need them?)
 
+    // Read fixups
     script.seek(SeekFrom::Start(fixup_offset  as u64))?;
-    let num_fixups = script.read_u16::<LittleEndian>()? as usize;
-    for _ in 0..num_fixups {
-        let _fixup = script.read_u16::<LittleEndian>()? as usize;
-    }
-    Ok(Script1Data{ hunk, dispatch_offsets } )
+    let fixup_offsets = read_u16_array(&mut script)?;
+    Ok(Script1Data{ hunk, dispatch_offsets, fixup_offsets, far_text_flag } )
 }
 
 struct Heap1Data {
     heap: Vec<u8>,
     variables: Vec<u16>,
-    items: Vec<ObjectOrClass>
+    items: Vec<ObjectOrClass>,
+    fixup_offsets: Vec<u16>,
 }
 
 fn load_heap1(heap_data: &[u8], script1: &Script1Data) -> Result<Heap1Data> {
     let mut heap_curs = Cursor::new(heap_data);
     let fixup_offset = heap_curs.read_u16::<LittleEndian>()? as usize;
-    let num_vars = heap_curs.read_u16::<LittleEndian>()? as usize;
-
-    let mut variables = Vec::<u16>::new();
-    for _ in 0..num_vars {
-        let v = heap_curs.read_u16::<LittleEndian>()?;
-        variables.push(v);
-    }
-
-    // Copy heap - this discards the fixups (which we don't need)
-    let mut heap: Vec<u8> = Vec::with_capacity(fixup_offset );
-    heap.extend_from_slice(&heap_data[0..fixup_offset ]);
-    // TODO fixups (do we need them?)
-
-    // Fixups
-    heap_curs.seek(SeekFrom::Start(fixup_offset as u64))?;
-    let num_fixups = heap_curs.read_u16::<LittleEndian>()? as usize;
-    for _ in 0..num_fixups {
-        let _fixup = heap_curs.read_u16::<LittleEndian>()? as usize;
-        // println!("heap fixup {:x}", _fixup);
-    }
+    let variables = read_u16_array(&mut heap_curs)?;
 
     // Objects, directly after the variables
     let mut items = Vec::<ObjectOrClass>::new();
-    heap_curs.seek(SeekFrom::Start(4 + (num_vars * 2) as u64))?;
     loop {
         let item = parse_object_class(&mut heap_curs, script1)?;
         match item {
@@ -217,7 +235,15 @@ fn load_heap1(heap_data: &[u8], script1: &Script1Data) -> Result<Heap1Data> {
             None => { break; }
         }
     }
-    Ok(Heap1Data{ heap, variables, items })
+
+    // Copy heap - this discards the fixups (which aren't part of the heap data)
+    let mut heap: Vec<u8> = Vec::with_capacity(fixup_offset);
+    heap.extend_from_slice(&heap_data[0..fixup_offset]);
+
+    // Fixups
+    heap_curs.seek(SeekFrom::Start(fixup_offset as u64))?;
+    let fixup_offsets = read_u16_array(&mut heap_curs)?;
+    Ok(Heap1Data{ heap, variables, items, fixup_offsets })
 }
 
 impl Script1 {
@@ -229,32 +255,58 @@ impl Script1 {
 
         let script1 = load_script1(&script_data)?;
         let heap1 = load_heap1(&heap_data, &script1)?;
-        Ok(Script1{ script1, heap1 })
+
+        // Store all code offsets
+        let mut code = Vec::<Code>::new();
+        for (item_index, item) in heap1.items.iter().enumerate() {
+            for (method_index, method) in item.get_methods().iter().enumerate() {
+                code.push(Code::Method(method.offset, 0, item_index, method_index));
+            }
+        }
+
+        // Add dispatches
+        for (n, offs) in script1.dispatch_offsets.iter().enumerate() {
+            code.push(Code::Dispatch(*offs, 0, n));
+        }
+
+        // Add final offset
+        code.push(Code::Final(script1.hunk.len() as u16));
+        code.sort_by(|a, b| a.get_offset().cmp(&b.get_offset()));
+
+        for n in 0..(code.len() - 1) {
+            let next_offset = code[n + 1].get_offset();
+            let new_offset = match code[n] {
+                Code::Method(offs, _, item_index, method_index) => { Code::Method(offs, next_offset - offs, item_index, method_index) },
+                Code::Dispatch(offs, _, index) => { Code::Dispatch(offs, next_offset - offs, index) },
+                _ => { unreachable!() }
+            };
+            code[n] = new_offset;
+        }
+        Ok(Script1{ script1, heap1, code })
+    }
+
+    pub fn has_far_text(&self) -> u16 {
+        self.script1.far_text_flag
     }
 
     pub fn get_dispatch_offsets(&self) -> &Vec<u16> {
         &self.script1.dispatch_offsets
     }
 
-    pub fn get_code_base(&self) -> usize {
-        // All CODE is on the HUNK - we have all offsets to the code because
-        // these are either the dispatches or methods
-        let mut code_offset = u16::MAX;
-        for offset in &self.script1.dispatch_offsets {
-            code_offset = std::cmp::min(code_offset, *offset);
-        }
-
-        // And combine this with the smallest method
-        for item in &self.heap1.items {
-            for method in item.get_methods() {
-                code_offset = std::cmp::min(code_offset, method.offset);
-            }
-        }
-        code_offset.into()
+    pub fn get_script_fixup_offsets(&self) -> &Vec<u16> {
+        &self.script1.fixup_offsets
     }
 
-    pub fn get_code(&self) -> &[u8] {
-         &self.script1.hunk[self.get_code_base()..]
+    pub fn get_heap_fixup_offsets(&self) -> &Vec<u16> {
+        &self.heap1.fixup_offsets
+    }
+
+    pub fn get_code(&self) -> &Vec<Code> {
+        &self.code
+    }
+
+    pub fn get_hunk(&self) -> &[u8] {
+         &self.script1.hunk
     }
 
     pub fn get_locals(&self) -> &Vec<u16> {
@@ -299,4 +351,3 @@ pub fn load_sci1_script(extract_path: &str, script_id: u16) -> Result<Script1> {
     let heap_data = std::fs::read(format!("{}/heap.{:03}", extract_path, script_id))?;
     Script1::new(&script_data, &heap_data)
 }
-

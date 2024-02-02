@@ -10,7 +10,7 @@ pub struct ClassDefinitions1 {
 }
 
 impl ClassDefinitions1 {
-    pub fn new(extract_path: &str, class_vocab: &vocab::Vocab996) -> Result<ClassDefinitions1> {
+    pub fn new(extract_path: Option<&str>, class_vocab: &vocab::Vocab996) -> Result<ClassDefinitions1> {
         let mut script_ids = HashSet::<u16>::new();
 
         // Convert class_vocab to class_id -> script_id map
@@ -23,10 +23,12 @@ impl ClassDefinitions1 {
 
         // Try to load all scripts we need
         let mut all_scripts = HashMap::<u16, script1::Script1>::new();
-        for script_id in script_ids {
-            match script1::load_sci1_script(extract_path, script_id) {
-                Ok(script) => { all_scripts.insert(script_id, script); },
-                Err(_) => { /* ignore unavailable scripts for now */ },
+        if let Some(extract_path) = extract_path {
+            for script_id in script_ids {
+                match script1::load_sci1_script(extract_path, script_id) {
+                    Ok(script) => { all_scripts.insert(script_id, script); },
+                    Err(_) => { /* ignore unavailable scripts for now */ },
+                }
             }
         }
         Ok(ClassDefinitions1{ all_scripts, classes })
