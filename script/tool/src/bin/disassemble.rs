@@ -500,6 +500,8 @@ enum CliCommand {
 /// Disassembles Sierra scripts
 #[derive(Parser)]
 struct Cli {
+    #[command(flatten)]
+    verbose: clap_verbosity_flag::Verbosity,
     #[clap(long, default_value_t=false)]
     /// Treat input as SCI1 (default: SCI0)
     sci1: bool,
@@ -743,6 +745,10 @@ fn recode_script1(script: &script1::Script1, selector_vocab: &vocab::Vocab997, k
 
 fn main() -> Result<()> {
     let args = Cli::parse();
+    env_logger::Builder::new()
+        .filter_level(args.verbose.log_level_filter())
+        .init();
+
     let extract_path = args.in_dir.as_str();
 
     match args.command {

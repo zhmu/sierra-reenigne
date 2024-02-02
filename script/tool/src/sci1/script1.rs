@@ -206,7 +206,7 @@ fn read_u16_array(rdr: &mut Cursor<&[u8]>) -> Result<Vec<u16>> {
     Ok(values)
 }
 
-fn load_script1(script_data: &[u8]) -> Result<Script1Data> {
+fn load_script1(script_id: u16, script_data: &[u8]) -> Result<Script1Data> {
     // Script resource - this goes on the hunk
     let mut script = Cursor::new(script_data);
     let fixup_offset = script.read_u16::<LittleEndian>()? as usize;
@@ -224,7 +224,7 @@ fn load_script1(script_data: &[u8]) -> Result<Script1Data> {
         if offs >= (8 + dispatch_offsets.len() * 2) && offs < fixup_offset {
             dispatches.push(Dispatch::Offset(*offset));
         } else {
-            println!("warning: encountered out-of-range dispatch {} offset {:x}", n, offs);
+            log::warn!("script.{:03}: encountered out-of-range dispatch {} offset {:x}", script_id, n, offs);
             dispatches.push(Dispatch::Invalid(*offset));
         }
     }
@@ -277,13 +277,13 @@ fn load_heap1(heap_data: &[u8], script1: &Script1Data) -> Result<Heap1Data> {
 }
 
 impl Script1 {
-    pub fn new(script_data: &[u8], heap_data: &[u8]) -> Result<Script1> {
+    pub fn new(script_id: u16, script_data: &[u8], heap_data: &[u8]) -> Result<Script1> {
         // Note: script.nnn is loaded on the HUNK [ locked ]
         //       ^^ this contains the selector id's, methods, code...
         //       heap.nnn   is loaded on the HEAP [ variables ]
         //       ^ this contains the objects/classes, strings
 
-        let script1 = load_script1(&script_data)?;
+        let script1 = load_script1(script_id, &script_data)?;
         let heap1 = load_heap1(&heap_data, &script1)?;
 
         // Store all code offsets
@@ -386,6 +386,6 @@ impl Script1 {
 pub fn load_sci1_script(extract_path: &str, script_id: u16) -> Result<Script1> {
     let script_data = std::fs::read(format!("{}/script.{:03}", extract_path, script_id))?;
     let heap_data = std::fs::read(format!("{}/heap.{:03}", extract_path, script_id))?;
-    println!(">> loading script {}", script_id);
-    Script1::new(&script_data, &heap_data)
+    log::info!(">> loading script {}", script_id);
+    Script1::new(script_id, &script_data, &heap_data)
 }

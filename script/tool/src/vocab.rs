@@ -18,7 +18,7 @@ impl Vocab997 {
                 let s = str::from_utf8(&input[offset+2..offset+2+length]).unwrap();
                 words.push(s.to_string());
             } else {
-                println!("warning: vocab997: offset {}..{} out of resource range, discarding index {}",
+                log::warn!("vocab997: offset {}..{} out of resource range, discarding index {}",
                     offset + 2, offset + 2 + length, n);
                 words.push("(corrupt)".to_string());
             }

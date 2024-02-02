@@ -71,7 +71,7 @@ impl Script {
 
             let base = rdr.position() as usize;
             if base + block_size > input.len() {
-                println!("warning: block type {:?} with size {} too large, truncating to {}", block_type, block_size, input.len() - base);
+                log::warn!("script.{:03}: block type {:?} with size {} too large, truncating to {}", id, block_type, block_size, input.len() - base);
                 block_size = input.len() - base
             }
             let mut block_data = Vec::<u8>::with_capacity(block_size);
@@ -128,7 +128,7 @@ pub fn relpos0_to_absolute_offset(ins: &disassemble::Instruction) -> u16
             if (a_value & 0x80) == 0 {
                 j_offset = offset + a_value;
             } else {
-                println!("is this correct (signed bits) ???");
+                println!("[TODO] is this correct (signed bits) ???");
                 j_offset = offset - (a_value & 0x7f);
             }
             j_offset as u16
