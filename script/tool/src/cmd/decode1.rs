@@ -75,6 +75,19 @@ fn decode_script1_code(script: &script1::Script1, kernel_vocab: &kcalls::KernelV
             }
         }
 
+        // For super, replace the ID with the class name
+        if ins.bytes[0] == 0x56 || ins.bytes[0] == 0x57 { /* super */
+            // TODO: this looks way too much like sci1_print_classes()
+            let class_id = ins.args[0];
+            if let Some(class_script) = class_definitions.get_script_for_class_id(class_id) {
+                let class = class_script.get_items().iter().filter(|x| match x { script1::ObjectOrClass::Class(cl) => cl.get_class_id() == class_id, _ => false }).next();
+                if let Some(class) = class {
+                    let class = match class { script1::ObjectOrClass::Class(class) => class, _ => { unreachable!(); } };
+                    args[0] = format!("{}", class_script.get_class_name(class));
+                }
+            }
+        }
+
         //
         let offset: u16 = ins.offset.try_into().unwrap();
         if let Some(label) = labels.get(&offset) {
