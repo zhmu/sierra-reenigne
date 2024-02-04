@@ -30,6 +30,7 @@ pub struct Property {
 }
 
 pub struct Object1 {
+    offset: u16,
     super_class: u16,
     methods: Vec<Method>,
     property_values: Vec<u16>,
@@ -42,6 +43,7 @@ impl Object1 {
 }
 
 pub struct Class1 {
+    offset: u16,
     class_id: u16,
     super_class: u16,
     methods: Vec<Method>,
@@ -49,6 +51,13 @@ pub struct Class1 {
 }
 
 impl ObjectOrClass {
+    pub fn get_offset(&self) -> u16 {
+        match self {
+            ObjectOrClass::Object(obj) => obj.offset,
+            ObjectOrClass::Class(class) => class.offset
+        }
+    }
+
     pub fn get_methods(&self) -> &Vec<Method> {
         match self {
             ObjectOrClass::Object(obj) => &obj.methods,
@@ -134,7 +143,7 @@ fn parse_object_class(rdr: &mut Cursor<&[u8]>, script1: &Script1Data) -> Result<
 
     if script == SCRIPT_OBJECT {
         // We're an object - no property dictionary to load (prop_dict is used here)
-        let obj = Object1{ super_class, methods, property_values };
+        let obj = Object1{ offset: initial_position as u16, super_class, methods, property_values };
         return Ok(Some(ObjectOrClass::Object(obj)));
     }
 
@@ -149,7 +158,7 @@ fn parse_object_class(rdr: &mut Cursor<&[u8]>, script1: &Script1Data) -> Result<
         property.push(Property{ selector, value: property_values[n] });
     }
 
-    let class = Class1{ class_id: script, super_class, methods, property };
+    let class = Class1{ offset: initial_position as u16, class_id: script, super_class, methods, property };
     Ok(Some(ObjectOrClass::Class(class)))
 }
 
@@ -181,19 +190,21 @@ impl Code {
 pub struct Script1 {
     script1: Script1Data,
     heap1: Heap1Data,
-    code: Vec<Code>
+    code: Vec<Code>,
+    dispatches: Vec<Dispatch>,
 }
 
 pub enum Dispatch {
     Offset(u16),
+    Item(usize),
     Invalid(u16)
 }
 
 struct Script1Data {
     hunk: Vec<u8>,
-    dispatches: Vec<Dispatch>,
     fixup_offsets: Vec<u16>,
-    far_text_flag: u16
+    dispatches: Vec<u16>,
+    far_text_flag: u16,
 }
 
 fn read_u16_array(rdr: &mut Cursor<&[u8]>) -> Result<Vec<u16>> {
@@ -214,20 +225,7 @@ fn load_script1(script_id: u16, script_data: &[u8]) -> Result<Script1Data> {
     let far_text_flag = script.read_u16::<LittleEndian>()?;
 
     // Dispatches
-    let dispatch_offsets = read_u16_array(&mut script)?;
-    let mut dispatches = Vec::<Dispatch>::with_capacity(dispatch_offsets.len());
-    for (n, offset) in dispatch_offsets.iter().enumerate() {
-        // Note: QfG3 script.034 seems to contain dispatch offsets to items
-        // on the heap (the uhuraTalker / Uhuru objects) - I have no idea
-        // which purpose this serves
-        let offs = *offset as usize;
-        if offs >= (8 + dispatch_offsets.len() * 2) && offs < fixup_offset {
-            dispatches.push(Dispatch::Offset(*offset));
-        } else {
-            log::warn!("script.{:03}: encountered out-of-range dispatch {} offset {:x}", script_id, n, offs);
-            dispatches.push(Dispatch::Invalid(*offset));
-        }
-    }
+    let dispatches = read_u16_array(&mut script)?;
 
     // Copy script to the hunk - this discards the fixups (which are't part of
     // the script data)
@@ -286,6 +284,24 @@ impl Script1 {
         let script1 = load_script1(script_id, &script_data)?;
         let heap1 = load_heap1(&heap_data, &script1)?;
 
+        // Resolve dispatches
+        let mut dispatches = Vec::<Dispatch>::with_capacity(script1.dispatches.len());
+        for (n, offset) in script1.dispatches.iter().enumerate() {
+            // Note: QfG3 script.034 seems to contain dispatch offsets to items
+            // on the heap (the uhuraTalker / Uhuru objects) - I have no idea
+            // which purpose this serves
+            let offs = *offset as usize;
+            // If it could be on the heap, check whether it's an object
+            if let Some(item_position) = heap1.items.iter().position(|i| i.get_offset() == *offset) {
+                dispatches.push(Dispatch::Item(item_position));
+            } else if offs >= (8 + script1.dispatches.len() * 2) && offs < script1.hunk.len() {
+                dispatches.push(Dispatch::Offset(*offset));
+            } else {
+                log::warn!("script.{:03}: encountered out-of-range dispatch {} offset {:x}", script_id, n, offs);
+                dispatches.push(Dispatch::Invalid(*offset));
+            }
+        }
+
         // Store all code offsets
         let mut code = Vec::<Code>::new();
         for (item_index, item) in heap1.items.iter().enumerate() {
@@ -295,7 +311,7 @@ impl Script1 {
         }
 
         // Add dispatches
-        for (n, d) in script1.dispatches.iter().enumerate() {
+        for (n, d) in dispatches.iter().enumerate() {
             if let Dispatch::Offset(offs) = d {
                 code.push(Code::Dispatch(*offs, 0, n));
             }
@@ -314,7 +330,7 @@ impl Script1 {
             };
             code[n] = new_offset;
         }
-        Ok(Script1{ script1, heap1, code })
+        Ok(Script1{ script1, heap1, dispatches, code })
     }
 
     pub fn has_far_text(&self) -> u16 {
@@ -322,7 +338,7 @@ impl Script1 {
     }
 
     pub fn get_dispatches(&self) -> &Vec<Dispatch> {
-        &self.script1.dispatches
+        &self.dispatches
     }
 
     pub fn get_script_fixup_offsets(&self) -> &Vec<u16> {
@@ -353,14 +369,16 @@ impl Script1 {
         &self.heap1.items
     }
 
-    pub fn get_string(&self, offset: usize) -> &str {
-        assert!(offset >= self.heap1.data_offset);
+    pub fn get_string(&self, offset: usize) -> Option<&str> {
+        if offset < self.heap1.data_offset { return None; }
+        if (offset - self.heap1.data_offset) >= self.heap1.data.len() { return None; }
+
         // strings are on the heap
         let data = &self.heap1.data[offset - self.heap1.data_offset..];
         let nul_byte_end = data.iter()
             .position(|&c| c == b'\0')
             .unwrap_or(data.len());
-        str::from_utf8(&data[0..nul_byte_end]).unwrap_or("<corrupt>")
+        str::from_utf8(&data[0..nul_byte_end]).ok()
     }
 
     pub fn get_class_by_id(&self, class_id: u16) -> Option<&Class1> {
@@ -377,6 +395,12 @@ impl Script1 {
         None
     }
 
+    pub fn find_item_by_offset(&self, offset: u16) -> Option<&ObjectOrClass> {
+        self.get_items().iter()
+            .filter(|i| i.get_offset() == offset)
+            .next()
+    }
+
     pub fn find_item_by_code(&self, item_index: usize, method_index: usize) -> &Code {
         self.get_code().iter()
             .filter(|c| match c { Code::Method(_, _, i_idx, m_idx) => { *i_idx == item_index && *m_idx == method_index }, _ => false })
@@ -387,7 +411,7 @@ impl Script1 {
     pub fn get_class_name(&self, class: &Class1) -> &str {
         let props = class.get_properties();
         if let Some(prop) = props.iter().find(|&p| p.selector == SELECTOR_NAME) {
-           self.get_string(prop.value.into())
+           self.get_string(prop.value.into()).unwrap_or("<out-of-range>")
         } else {
             "???"
         }
@@ -397,7 +421,7 @@ impl Script1 {
         let prop_vals = obj.get_property_values();
         let superclass_props = super_class.get_properties();
         if let Some(n) = superclass_props.iter().position(|p| p.selector == SELECTOR_NAME) {
-           self.get_string(prop_vals[n].into())
+           self.get_string(prop_vals[n].into()).unwrap_or("<out-of-range>")
         } else {
             "???"
         }

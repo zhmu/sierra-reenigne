@@ -39,7 +39,7 @@ fn generate_code_labels(block: &script0::ScriptBlock, labels: &mut LabelMap) {
     let disasm = disassemble::Disassembler::new(block.base, &block.data);
     for ins in disasm {
         if ins.bytes[0] == 0x40 || ins.bytes[0] == 0x41 { /* call */
-            let j_offset = script0::relpos0_to_absolute_offset(&ins);
+            let j_offset = disassemble::relpos0_to_absolute_offset(&ins);
             let label = format!("local_{:x}", j_offset);
             labels.insert(j_offset, label);
         }
@@ -186,7 +186,7 @@ fn disassemble_block(script: &script0::Script, block: &script0::ScriptBlock, lab
                         line += &format!(" {}", a_value).to_string();
                     }
                     opcode::Arg::RelPos8 | opcode::Arg::RelPos16 => {
-                        let j_offset = script0::relpos0_to_absolute_offset(&ins);
+                        let j_offset = disassemble::relpos0_to_absolute_offset(&ins);
                         let pretty_address = get_pretty_address(&script, j_offset, &labels);
                         line += &format!(" {}", pretty_address).to_string();
                     }
@@ -195,7 +195,7 @@ fn disassemble_block(script: &script0::Script, block: &script0::ScriptBlock, lab
         }
 
         if ins.bytes[0] == 0x72 || ins.bytes[0] == 0x73 { /* lofsa */
-            let address = ((offset as usize + ins.bytes.len() + ins.args[0] as usize) & 0xffff) as u16;
+            let address = disassemble::sci0_get_lofsa_address(&ins, offset);
             let pretty_address = get_pretty_address(&script, address, &labels);
             line += &format!(" # {}", &pretty_address).as_str();
         }

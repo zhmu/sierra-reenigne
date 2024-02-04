@@ -56,3 +56,36 @@ impl<'a> Iterator for Disassembler<'a> {
         Some(Instruction{ offset: self.base + offset, bytes, opcode, args })
     }
 }
+
+// Note: always uses the first argument
+pub fn relpos0_to_absolute_offset(ins: &Instruction) -> u16
+{
+    let a_type = &ins.opcode.arg[0];
+    let a_value: usize = ins.args[0].into();
+    let offset: usize = ins.offset as usize + ins.bytes.len();
+    match a_type {
+        opcode::Arg::RelPos8 => {
+            let j_offset: usize;
+            if (a_value & 0x80) == 0 {
+                j_offset = offset + a_value;
+            } else {
+                j_offset = offset - (0x100 - a_value);
+            }
+            j_offset as u16
+        }
+        opcode::Arg::RelPos16 => {
+            let j_offset = (offset + a_value) & 0xffff;
+            j_offset as u16
+        }
+        _ => { panic!("only to be called with relative positions"); }
+    }
+}
+
+pub fn sci0_get_lofsa_address(ins: &Instruction, offset: u16) -> u16 {
+    ((offset as usize + ins.bytes.len() + ins.args[0] as usize) & 0xffff) as u16
+}
+
+pub fn sci1_get_lofsa_address(ins: &Instruction) -> u16 {
+    // lofsa is not relative in SCI1 (at least in QfG3)
+    ins.args[0]
+}

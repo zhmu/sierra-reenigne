@@ -3,8 +3,6 @@ use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::str;
 
-use crate::{disassemble, opcode};
-
 #[derive(PartialEq,Debug)]
 pub enum BlockType {
     Terminator,
@@ -114,31 +112,6 @@ pub fn get_string(data: &[u8]) -> &str {
         .position(|&c| c == b'\0')
         .unwrap_or(data.len());
     str::from_utf8(&data[0..nul_byte_end]).unwrap_or("<corrupt>")
-}
-
-// Note: always uses the first argument
-pub fn relpos0_to_absolute_offset(ins: &disassemble::Instruction) -> u16
-{
-    let a_type = &ins.opcode.arg[0];
-    let a_value: usize = ins.args[0].into();
-    let offset: usize = ins.offset as usize + ins.bytes.len();
-    match a_type {
-        opcode::Arg::RelPos8 => {
-            let j_offset: usize;
-            if (a_value & 0x80) == 0 {
-                j_offset = offset + a_value;
-            } else {
-                println!("[TODO] is this correct (signed bits) ???");
-                j_offset = offset - (a_value & 0x7f);
-            }
-            j_offset as u16
-        }
-        opcode::Arg::RelPos16 => {
-            let j_offset = (offset + a_value) & 0xffff;
-            j_offset as u16
-        }
-        _ => { panic!("only to be called with relative positions"); }
-    }
 }
 
 pub fn load_sci0_script(extract_path: &str, script_id: u16) -> Result<Script> {

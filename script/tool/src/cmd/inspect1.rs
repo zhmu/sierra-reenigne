@@ -1,9 +1,9 @@
 use crate::sci1::{script1, class_defs1};
-use crate::sci0::script0; // XXX
 use crate::{vocab, kcalls, opcode, disassemble};
 
 use anyhow::Result;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 // TODO deduplicate
 fn get_selector_name(selector_vocab: &vocab::Vocab997, index: u16) -> String {
@@ -15,6 +15,16 @@ fn get_selector_name(selector_vocab: &vocab::Vocab997, index: u16) -> String {
 
 // SCI1
 type LabelMap = HashMap<u16, String>;
+
+fn get_pretty_address(script: &script1::Script1, address: u16, labels: &LabelMap) -> String {
+    if let Some(label) = labels.get(&address) {
+        return format!("{} ({:x})", label, address);
+    }
+    if let Some(s) = script.get_string(address as usize) {
+        return format!(r#""{}" {:x}"#, s, address);
+    }
+    format!("0x{:x}", address)
+}
 
 fn build_label_map1(script: &script1::Script1, class_definitions: &class_defs1::ClassDefinitions1, selector_vocab: &vocab::Vocab997) -> Result<LabelMap> {
     let mut labels: LabelMap = LabelMap::new();
@@ -43,7 +53,8 @@ fn build_label_map1(script: &script1::Script1, class_definitions: &class_defs1::
                 name = format!("class_{}", item_name).to_string();
             }
         }
-
+        let offset = item.get_offset();
+        labels.insert(offset, name.clone());
 
         for method in item.get_methods() {
             let selector_name = get_selector_name(selector_vocab, method.index);
@@ -56,6 +67,9 @@ fn build_label_map1(script: &script1::Script1, class_definitions: &class_defs1::
 }
 
 fn disassemble_script1_code(script: &script1::Script1, kernel_vocab: &kcalls::KernelVocab, labels: &LabelMap, code: &script1::Code) {
+    let script_fixups = script.get_script_fixup_offsets().iter().collect::<HashSet<_>>();
+    println!("fixups {:x?}", script_fixups);
+
     let opcodes = &script.get_hunk()[code.get_offset() as usize..(code.get_offset() + code.get_length()) as usize];
     let disasm = disassemble::Disassembler::new1(code.get_offset() as usize, opcodes);
     for ins in disasm {
@@ -65,8 +79,16 @@ fn disassemble_script1_code(script: &script1::Script1, kernel_vocab: &kcalls::Ke
         }
 
         let mut line: String = format!("{:04x}: ", offset);
-        for n in ins.bytes {
-            line += &format!("{:02x}", n);
+        let mut n: usize = 0;
+        while n < ins.bytes.len() {
+            let value_offset = offset + n as u16;
+            if script_fixups.contains(&value_offset) {
+                line += &format!("[{:02x}{:02x}]", ins.bytes[n], ins.bytes[n + 1]);
+                n += 2;
+            } else {
+                line += &format!("{:02x}", ins.bytes[n]);
+                n += 1;
+            }
         }
         while line.len() < 20 {
             line += &' '.to_string();
@@ -84,8 +106,8 @@ fn disassemble_script1_code(script: &script1::Script1, kernel_vocab: &kcalls::Ke
                         line += &format!(" {}", a_value).to_string();
                     }
                     opcode::Arg::RelPos8 | opcode::Arg::RelPos16 => {
-                        let _j_offset = script0::relpos0_to_absolute_offset(&ins);
-                        let pretty_address = "???"; // get_pretty_address(&script, j_offset, &labels);
+                        let j_offset = disassemble::relpos0_to_absolute_offset(&ins);
+                        let pretty_address = get_pretty_address(script, j_offset, &labels);
                         line += &format!(" {}", pretty_address).to_string();
                     }
                 }
@@ -93,8 +115,8 @@ fn disassemble_script1_code(script: &script1::Script1, kernel_vocab: &kcalls::Ke
         }
 
         if ins.bytes[0] == 0x72 || ins.bytes[0] == 0x73 { /* lofsa */
-            let _address = ((offset as usize + ins.bytes.len() + ins.args[0] as usize) & 0xffff) as u16;
-            let pretty_address = "???"; // get_pretty_address(&script, address, &labels);
+            let address = disassemble::sci1_get_lofsa_address(&ins);
+            let pretty_address = get_pretty_address(script, address, &labels);
             line += &format!(" # {}", &pretty_address).as_str();
         }
         if ins.bytes[0] == 0x42 || ins.bytes[0] == 0x43 { /* callk */
@@ -134,7 +156,7 @@ pub fn inspect_script1(script: &script1::Script1, selector_vocab: &vocab::Vocab9
 
                     let item_name = script.get_object_name(obj, super_class);
                     let class_name = super_script.get_class_name(super_class);
-                    println!("{}: object {} super_class {}", item_index, item_name, class_name);
+                    println!("[offset {:x}] object {} super_class {}", item.get_offset(), item_name, class_name);
 
                     // Safety
                     assert_eq!(super_properties.len(), obj.get_property_values().len());
@@ -151,7 +173,7 @@ pub fn inspect_script1(script: &script1::Script1, selector_vocab: &vocab::Vocab9
             },
             script1::ObjectOrClass::Class(class) => {
                 let item_name = script.get_class_name(class);
-                println!("{}: class {} super_class {}", item_index, item_name, super_class_id);
+                println!("[offset {:x}] class {} super_class {}", item.get_offset(), item_name, super_class_id);
 
                 let properties = class.get_properties();
 
@@ -196,6 +218,17 @@ pub fn inspect_script1(script: &script1::Script1, selector_vocab: &vocab::Vocab9
                 disassemble_script1_code(&script, kernel_vocab, &labels, code);
             },
             _ => { }
+        }
+    }
+    for (n, dispatch) in script.get_dispatches().iter().enumerate() {
+        match dispatch {
+            script1::Dispatch::Offset(_) => { }, // code
+            script1::Dispatch::Item(index) => {
+                println!("dispatch {} refers to item index {}", n, index);
+            },
+            script1::Dispatch::Invalid(offset) => {
+                println!("dispatch {} refers to invalid offset {:x}", n, offset);
+            },
         }
     }
     Ok(())
