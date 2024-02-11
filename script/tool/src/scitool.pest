@@ -1,0 +1,31 @@
+// https://blog.logrocket.com/building-rust-parser-pest-peg/
+
+COMMENT = _{ "//" ~ (!NEWLINE ~ ANY)* ~  NEWLINE }
+WHITESPACE = _{ " " | NEWLINE }
+
+NUMBER = { ASCII_DIGIT+ }
+ID = { !WHITESPACE ~ ASCII_ALPHA+ }
+
+local_def = { NUMBER ~ "=" ~ NUMBER }
+locals = { "locals" ~ "{" ~ local_def ~ ("," | local_def)* ~ ","? ~ "}" }
+
+property = { ID ~ "=" ~ NUMBER }
+properties = { "properties" ~ "{" ~ (property ~ ",")* ~ property? ~ "}" }
+
+char = { !("}") ~ ANY }
+inner = { char* }
+assembly = { "{" ~ inner ~ "}" }
+method_info = { ID ~ assembly }
+
+methods = { "methods" ~ "{" ~ method_info* ~ "}" }
+
+object_info = { properties ~ methods }
+
+object = { "object" ~ ID ~ ":" ~ "super_class" ~ ID ~ "{" ~ object_info ~ "}" }
+items = { object* }
+
+dispatch_info = { NUMBER ~ assembly }
+
+dispatches = { "dispatches" ~ "{" ~ dispatch_info* ~ "}" }
+
+script = { SOI ~ locals ~ items ~ dispatches ~ EOI }
