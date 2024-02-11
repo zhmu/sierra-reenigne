@@ -1,4 +1,4 @@
-use crate::sci1::{script1, class_defs1};
+use crate::sci1::{script1, class_defs1, helpers1};
 use crate::{kcalls, vocab, opcode, disassemble};
 use anyhow::Result;
 
@@ -19,8 +19,7 @@ fn generate_labels(script: &script1::Script1, offset: u16, opcodes: &[u8]) -> Ha
     let disasm = disassemble::Disassembler::new1(offset as usize, opcodes);
     for ins in disasm {
         let opcode = &ins.opcode;
-        for (n, a_type) in opcode.arg.iter().enumerate() {
-            let a_value = ins.args[n];
+        for a_type in opcode.arg {
             match a_type {
                 opcode::Arg::RelPos8 | opcode::Arg::RelPos16 => {
                     let offset = disassemble::relpos0_to_absolute_offset(&ins);
@@ -77,14 +76,9 @@ fn decode_script1_code(script: &script1::Script1, kernel_vocab: &kcalls::KernelV
 
         // For super, replace the ID with the class name
         if ins.bytes[0] == 0x56 || ins.bytes[0] == 0x57 { /* super */
-            // TODO: this looks way too much like sci1_print_classes()
             let class_id = ins.args[0];
-            if let Some(class_script) = class_definitions.get_script_for_class_id(class_id) {
-                let class = class_script.get_items().iter().filter(|x| match x { script1::ObjectOrClass::Class(cl) => cl.get_class_id() == class_id, _ => false }).next();
-                if let Some(class) = class {
-                    let class = match class { script1::ObjectOrClass::Class(class) => class, _ => { unreachable!(); } };
-                    args[0] = format!("{}", class_script.get_class_name(class));
-                }
+            if let Some(class_name) = helpers1::resolve_class_name(class_definitions, class_id) {
+                args[0] = format!("{}", class_name);
             }
         }
 
@@ -161,6 +155,9 @@ pub fn decode_script1(script: &script1::Script1, selector_vocab: &vocab::Vocab99
                     println!("  properties {{");
                     for (n, value) in obj.get_property_values().iter().enumerate() {
                         if *value == super_properties[n].value { continue; }
+                        // Skip system properties - these should be implied
+                        if super_properties[n].selector >= script1::FIRST_SYSTEM_SELECTOR_ID { continue; }
+                        if super_properties[n].selector == script1::SELECTOR_NAME { continue; }
                         println!("    {} = {}, // was {}", get_selector_name(selector_vocab, super_properties[n].selector), value, super_properties[n].value);
                     }
                     println!("  }}\n");

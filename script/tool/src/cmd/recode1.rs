@@ -6,7 +6,7 @@ use byteorder::{ByteOrder, LittleEndian, WriteBytesExt};
 use std::fs::File;
 use std::io::Write;
 
-pub fn recode_script1(script: &script1::Script1, selector_vocab: &vocab::Vocab997, kernel_vocab: &kcalls::KernelVocab, class_definitions: &class_defs1::ClassDefinitions1) -> Result<()> {
+pub fn recode_script1(script: &script1::Script1, _selector_vocab: &vocab::Vocab997, _kernel_vocab: &kcalls::KernelVocab, _class_definitions: &class_defs1::ClassDefinitions1) -> Result<()> {
     let mut script_out = Vec::<u8>::new();
     let mut heap_out = Vec::<u8>::new();
 

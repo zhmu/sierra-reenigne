@@ -17,7 +17,8 @@ const _INDEX_INFO: usize = 7;
 
 const NUM_SYSTEM_PROPERTIES: u16 = 8;
 
-const SELECTOR_NAME: u16 = 20; // TODO look this up
+pub const FIRST_SYSTEM_SELECTOR_ID: u16 = 0x1000;
+pub const SELECTOR_NAME: u16 = 20; // TODO look this up
 
 pub struct Method {
     pub index: u16,
@@ -217,7 +218,7 @@ fn read_u16_array(rdr: &mut Cursor<&[u8]>) -> Result<Vec<u16>> {
     Ok(values)
 }
 
-fn load_script1(script_id: u16, script_data: &[u8]) -> Result<Script1Data> {
+fn load_script1(script_data: &[u8]) -> Result<Script1Data> {
     // Script resource - this goes on the hunk
     let mut script = Cursor::new(script_data);
     let fixup_offset = script.read_u16::<LittleEndian>()? as usize;
@@ -281,7 +282,7 @@ impl Script1 {
         //       heap.nnn   is loaded on the HEAP [ variables ]
         //       ^ this contains the objects/classes, strings
 
-        let script1 = load_script1(script_id, &script_data)?;
+        let script1 = load_script1(&script_data)?;
         let heap1 = load_heap1(&heap_data, &script1)?;
 
         // Resolve dispatches
