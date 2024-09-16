@@ -176,7 +176,7 @@ void sound_server()
                 if (v == TIMINGOVER) {
                     ti->rest = 0x8000 | 240;
                 } else {
-                    ti->rest = 0;
+                    ti->rest = v;
                 }
             }
             continue;
