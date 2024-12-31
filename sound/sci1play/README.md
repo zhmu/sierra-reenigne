@@ -5,7 +5,7 @@ Allow you to play SCI1 sound.nnn files on a DOS machine.
 # Features
 
 - Uses SCI1 drivers for playback
-- Tested with ``adl.drv`` from Quest for Glory 3 English
+- Tested with ``adl.drv`` from Quest for Glory 3 English, King Quest 5
 - GPLv3 licensed
 
 ## Building
@@ -27,6 +27,7 @@ Supported arguments:
 ## Caveats / TODO
 
 - The playback is likely not identical to that of SCI itself: feedback is most welcome (By email at rink@rink.nu or file an issue/pull request on GitHub)
+- Music from Space Quest 4 doesn't work
 - This only works with SCI1 games - SCI0 games use a different audio model which isn't supported by this code (use SCI0PLAY to play these)
 - Serial port mode, similar to SCI0PLAY, needs to be implemented
 - Lots of duplicated code from [SCI0PLAY](../sci0play/README.md)

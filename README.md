@@ -12,7 +12,7 @@ Recently, I decided to start to properly clean up, write down and publish the in
 
 All SCI games use a `RESOURCE.MAP` file, which details which resources are present and in which `RESOURCE.nnn` the content is located. Resources can be any aspect of game data, for example graphics, music, scripts, fonts and the like.
 
-- [Resource file format](resource/doc/resource.md): describes the file formats in use
+- [Resource file format](doc/resource.md): describes the file formats in use
 - [Extract](resource/README.md): tool to extract SCI0/SCI1 resources to individual files.
 
 ### Sound
@@ -24,3 +24,13 @@ All SCI games use a `RESOURCE.MAP` file, which details which resources are prese
 ### Script
 
 - [disassemble0](script/tool/README.md): SCI0/SCI1 script tooling
+
+## Building
+
+Building all Rust-based projects requires a [Rust](https://www.rust-lang.org) toolchain installed. Once properly installed, it consists of simply invoking Cargo from the root directory, i.e.:
+
+```sh
+> cargo build
+```
+
+The sound drivers require [OpenWatcom](https://github.com/open-watcom/open-watcom-v2) to be installed. Look at the [specific instructions](sound/drivers/README.md) for more details.
