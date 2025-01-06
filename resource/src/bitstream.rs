@@ -5,8 +5,8 @@ pub struct Streamer<'a> {
     nbits: u32,
 }
 
-impl<'a> Streamer<'a> {
-    pub fn new(input: &'a [u8]) -> Streamer {
+impl Streamer<'_> {
+    pub fn new(input: &[u8]) -> Streamer {
         Streamer{ input, bits: 0, nbits: 0, input_pos: 0 }
     }
 
