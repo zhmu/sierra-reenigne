@@ -15,6 +15,10 @@ All SCI games use a `RESOURCE.MAP` file, which details which resources are prese
 - [Resource file format](doc/resource.md): describes the file formats in use
 - [Extract](resource/README.md): tool to extract SCI0/SCI1 resources to individual files.
 
+### Graphics
+
+- [draw-...](gfx/README.md): tools to render SCI0/SCI1 resources to bitmaps
+
 ### Sound
 
 - [Sound drivers](sound/drivers/README.md): reverse engineered, commented sound drivers sources that yield byte-for-byte identical binaries to the original drivers (SCI0/SCI1)
