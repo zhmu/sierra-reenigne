@@ -1,4 +1,5 @@
 pub mod cel;
+pub mod font;
 pub mod palette;
 pub mod picture;
 pub mod util;

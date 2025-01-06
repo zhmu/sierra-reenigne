@@ -1,5 +1,7 @@
+extern crate scigfx;
+
 use std::env;
-use scifont::font;
+use scigfx::font;
 use bmp::{Image, Pixel, px};
 use anyhow::Result;
 
