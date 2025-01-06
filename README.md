@@ -10,14 +10,19 @@ Recently, I decided to start to properly clean up, write down and publish the in
 
 ### Resource
 
-All SCI games use a `RESOURCE.MAP` file, which details which resources are present and in which `RESOURCE.nnn` the content is located. Resources can be any aspect of game data, for example graphics, music, scripts, fonts and the like.
+All SCI games use a `RESOURCE.MAP` file, which details which resources are present and in which `RESOURCE.nnn` the content is located. Resources can be any aspect of game data, for example graphics, music, scripts, fonts and the like. In-depth information can be found in the [resource file format description](doc/resource.md) document.
 
-- [Resource file format](doc/resource.md): describes the file formats in use
-- [Extract](resource/README.md): tool to extract SCI0/SCI1 resources to individual files.
+`restool` can be used to list resource contents and extract them to individual files.
 
 ### Graphics
 
-- [draw-...](gfx/README.md): tools to render SCI0/SCI1 resources to bitmaps
+There are various `draw-...` tools available to render SCI resources to bitmaps:
+
+- `draw-font`: renders SCI0 `font.NNN` (monochrome font)
+- `draw-pic0`: renders SCI0 `pic.NNN` (16 colour background art)
+- `draw-pic1`: renders SCI1 `pic.NNN` (256 colour background art)
+- `draw-view0`: renders SCI0 `view.NNN` (16 colour sprites)
+- `draw-view1`: renders SCI1 `view.NNN` (256 colour sprites)
 
 ### Sound
 
@@ -27,6 +32,7 @@ All SCI games use a `RESOURCE.MAP` file, which details which resources are prese
 
 ### Script
 
+`scripttool` can be used to 
 - [disassemble0](script/tool/README.md): SCI0/SCI1 script tooling
 
 ## Building
