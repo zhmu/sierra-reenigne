@@ -3,4 +3,5 @@ members = [
     "resource",
     "font",
     "script/tool",
+    "gfx",
 ]
