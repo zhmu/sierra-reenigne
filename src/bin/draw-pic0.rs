@@ -11,7 +11,7 @@ fn main() -> Result<()> {
     }
     let pic_path = &args[1];
     let pic_data = std::fs::read(pic_path)?;
-    let pic = picture::Picture::new_pic0(&pic_data)?;
+    let pic = picture::Picture::new_pic0(0, 10, &pic_data)?;
 
     let mut palette = [ 0u8; 768 ];
     palette::fill_ega_colours(&mut palette);

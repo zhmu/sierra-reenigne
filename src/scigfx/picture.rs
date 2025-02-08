@@ -276,13 +276,11 @@ pub struct Picture {
 }
 
 impl Picture {
-    fn new() -> Self {
+    fn new(port_x: i32, port_y: i32) -> Self {
         let screen_size = (SCREEN_WIDTH * SCREEN_HEIGHT) as usize;
         let visual = vec![0; screen_size];
         let priority = vec![0; screen_size];
         let control = vec![0; screen_size];
-        let port_x = 0;
-        let port_y = 10;
         Picture{ visual, priority, control, port_x, port_y, is_ega: false }
     }
 
@@ -310,7 +308,7 @@ impl Picture {
         rect.bottom = clamp(rect.bottom, 0, SCREEN_HEIGHT);
     }
 
-    pub fn new_pic0(data: &[u8]) -> Result<Picture> {
+    pub fn new_pic0(port_x: i32, port_y: i32, data: &[u8]) -> Result<Picture> {
         let mut palette = [ [ 0 as u8; EGA_PALETTE_SIZE ]; EGA_PALETTE_COUNT];
         for n in 0..EGA_PALETTE_COUNT {
             for m in 0..EGA_PALETTE_SIZE {
@@ -324,7 +322,7 @@ impl Picture {
         let mut pattern_nr: u8 = 0;
         let mut pattern_code: u8 = 0;
 
-        let mut pic = Picture::new();
+        let mut pic = Picture::new(port_x, port_y);
         pic.is_ega = true;
         pic.clear();
 
@@ -471,7 +469,7 @@ impl Picture {
 
     pub fn new_pic1(data: &[u8], load_palette: bool, palette: &mut [ u8; 768 ]) -> Result<Picture> {
         let pic_hdr = VGAPicHeader::unpack_from_slice(&data[0..32]).unwrap();
-        let mut pic = Picture::new();
+        let mut pic = Picture::new(0, 0);
         pic.is_ega = false;
         if load_palette {
             let pal_data = &data[pic_hdr.palette_offset as usize..];

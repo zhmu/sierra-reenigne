@@ -50,7 +50,7 @@ struct Cli {
 }
 
 fn sci0_inspect(extract_path: &str, script_id: u16, kernel_vocab: &kcalls::KernelVocab, selector_vocab: &vocab::Vocab997) -> Result<()> {
-    let class_definitions = sci0_get_class_defs(extract_path)?;
+    let (_, class_definitions) = sci0_get_class_defs(extract_path)?;
 
     let main_vocab: Option<vocab::Vocab000>;
     if let Ok(vocab_000_data) = std::fs::read(format!("{}/vocab.000", extract_path)) {
@@ -69,17 +69,19 @@ fn sci0_inspect(extract_path: &str, script_id: u16, kernel_vocab: &kcalls::Kerne
     inspect0::inspect_script0(&script0, selector_vocab, &kernel_vocab, &class_definitions, &main_vocab)
 }
 
-fn sci0_get_class_defs(extract_path: &str)-> Result<class_defs0::ClassDefinitions> {
+fn sci0_get_class_defs(extract_path: &str)-> Result<(vocab::Vocab996, class_defs0::ClassDefinitions)> {
     let vocab_996_data = std::fs::read(format!("{}/vocab.996", extract_path))?;
     let class_vocab = vocab::Vocab996::new(&vocab_996_data)?;
-    Ok(class_defs0::ClassDefinitions::new(extract_path.to_string(), &class_vocab))
+    let class_defs = class_defs0::ClassDefinitions::new(extract_path.to_string(), &class_vocab);
+    Ok((class_vocab, class_defs))
 }
 
-fn sci1_get_class_defs(extract_path: &str, load_externals: bool) -> Result<class_defs1::ClassDefinitions1> {
+fn sci1_get_class_defs(extract_path: &str, load_externals: bool) -> Result<(vocab::Vocab996, class_defs1::ClassDefinitions1)> {
     let vocab_996_data = std::fs::read(format!("{}/vocab.996", extract_path))?;
     let class_vocab = vocab::Vocab996::new(&vocab_996_data)?;
     let class_extract_path = if load_externals { Some(extract_path) } else { None };
-    class_defs1::ClassDefinitions1::new(class_extract_path, &class_vocab)
+    let class_defs = class_defs1::ClassDefinitions1::new(class_extract_path, &class_vocab)?;
+    Ok((class_vocab, class_defs))
 }
 
 fn get_selectors(extract_path: &str) -> Result<vocab::Vocab997> {
@@ -92,7 +94,7 @@ fn decode(extract_path: &str, script_id: u16, args: &Cli, no_externals: bool) ->
     let kernel_vocab = kcalls::load_kernel_vocab(extract_path);
 
     if args.sci1 {
-        let class_definitions = sci1_get_class_defs(extract_path, !no_externals)?;
+        let (_, class_definitions) = sci1_get_class_defs(extract_path, !no_externals)?;
         let script1 = script1::load_sci1_script(extract_path, script_id as u16)?;
         decode1::decode_script1(&script1, &selector_vocab, &kernel_vocab, &class_definitions)
     } else {
@@ -105,7 +107,7 @@ fn inspect(extract_path: &str, script_id: u16, args: &Cli, no_externals: bool) -
     let kernel_vocab = kcalls::load_kernel_vocab(extract_path);
 
     if args.sci1 {
-        let class_definitions = sci1_get_class_defs(extract_path, !no_externals)?;
+        let (_, class_definitions) = sci1_get_class_defs(extract_path, !no_externals)?;
         let script1 = script1::load_sci1_script(extract_path, script_id as u16)?;
         inspect1::inspect_script1(&script1, &selector_vocab, &kernel_vocab, &class_definitions)
     } else {
@@ -114,7 +116,7 @@ fn inspect(extract_path: &str, script_id: u16, args: &Cli, no_externals: bool) -
 }
 
 fn sci1_recode(extract_path: &str, script_id: u16, kernel_vocab: &kcalls::KernelVocab, selector_vocab: &vocab::Vocab997) -> Result<()> {
-    let class_definitions = sci1_get_class_defs(extract_path, true)?;
+    let (_, class_definitions) = sci1_get_class_defs(extract_path, true)?;
     let script1 = script1::load_sci1_script(extract_path, script_id as u16)?;
     recode1::recode_script1(&script1, selector_vocab, &kernel_vocab, &class_definitions)
 }
@@ -154,11 +156,11 @@ fn main() -> Result<()> {
         },
         CliCommand::Classes{ } => {
             if args.sci1 {
-                let class_definitions = sci1_get_class_defs(extract_path, true)?;
-                print::sci1_print_classes(&class_definitions)
+                let (class_vocab, class_definitions) = sci1_get_class_defs(extract_path, true)?;
+                print::sci1_print_classes(&class_definitions, &class_vocab)
             } else {
-                let class_definitions = sci0_get_class_defs(extract_path)?;
-                print::sci0_print_classes(&class_definitions)
+                let (class_vocab, class_definitions) = sci0_get_class_defs(extract_path)?;
+                print::sci0_print_classes(&class_definitions, &class_vocab)
             }
         },
     }

@@ -32,8 +32,11 @@ There are various `draw-...` tools available to render SCI resources to bitmaps:
 
 ### Script
 
-`scripttool` can be used to 
-- [disassemble0](script/tool/README.md): SCI0/SCI1 script tooling
+`scripttool` can be used to inspect SCI0/SCI1 scripts.
+
+### Interpreter
+
+Putting it all together is `sci_or_die`, a SCI0 interpreter that tries to run Quest for Glory 1 EGA. It is very incomplete, and is purely of interest to tinkerers at this point.
 
 ## Building
 
