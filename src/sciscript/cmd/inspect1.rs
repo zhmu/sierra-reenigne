@@ -73,7 +73,7 @@ fn disassemble_script1_code(script: &script1::Script1, kernel_vocab: &kcalls::Ke
     println!("fixups {:x?}", script_fixups);
 
     let opcodes = &script.get_hunk()[code.get_offset() as usize..(code.get_offset() + code.get_length()) as usize];
-    let disasm = disassemble::Disassembler::new1(code.get_offset() as usize, opcodes);
+    let disasm = disassemble::Disassembler::new(code.get_offset() as usize, opcodes);
     for ins in disasm {
         let offset: u16 = ins.offset.try_into().unwrap();
         if let Some(label) = labels.get(&offset) {

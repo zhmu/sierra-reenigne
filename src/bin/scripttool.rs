@@ -3,7 +3,7 @@ extern crate sierra_reenigne;
 use anyhow::Result;
 use sierra_reenigne::sciscript::{
     vocab, kcalls,
-    cmd::{print, inspect0, inspect1, recode1, decode1},
+    cmd::{print, inspect0, inspect1, recode1, decode1, decode0},
     sci0::{class_defs0, script0},
     sci1::{class_defs1, script1}
 };
@@ -98,7 +98,9 @@ fn decode(extract_path: &str, script_id: u16, args: &Cli, no_externals: bool) ->
         let script1 = script1::load_sci1_script(extract_path, script_id as u16)?;
         decode1::decode_script1(&script1, &selector_vocab, &kernel_vocab, &class_definitions)
     } else {
-        todo!("not implemented for sci0");
+        let (_, class_definitions) = sci0_get_class_defs(extract_path)?;
+        let script0 = script0::load_sci0_script(extract_path, script_id as u16)?;
+        decode0::decode_script0(&script0, &selector_vocab, &kernel_vocab, &class_definitions)
     }
 }
 

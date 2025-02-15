@@ -21,11 +21,6 @@ impl<'a> Disassembler<'a> {
         let rdr = Cursor::new(data);
         Disassembler{ base, rdr }
     }
-
-    pub fn new1(base: usize, data: &'a [u8]) -> Disassembler<'a> {
-        let rdr = Cursor::new(data);
-        Disassembler{ base, rdr }
-    }
 }
 
 impl<'a> Iterator for Disassembler<'a> {

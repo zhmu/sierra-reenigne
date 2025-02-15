@@ -18,7 +18,7 @@ fn generate_labels(script: &script1::Script1, offset: u16, opcodes: &[u8]) -> Ha
     let mut labels = HashMap::<u16, String>::new();
 
     // Start by creating labels for all branches
-    let disasm = disassemble::Disassembler::new1(offset as usize, opcodes);
+    let disasm = disassemble::Disassembler::new(offset as usize, opcodes);
     for ins in disasm {
         let opcode = &ins.opcode;
         for a_type in opcode.arg {
@@ -49,7 +49,7 @@ fn decode_script1_code(script: &script1::Script1, kernel_vocab: &kcalls::KernelV
 
     let opcodes = &script.get_hunk()[code.get_offset() as usize..(code.get_offset() + code.get_length()) as usize];
     let labels = generate_labels(script, code.get_offset(), opcodes);
-    let disasm = disassemble::Disassembler::new1(code.get_offset() as usize, opcodes);
+    let disasm = disassemble::Disassembler::new(code.get_offset() as usize, opcodes);
     for ins in disasm {
         let opcode = &ins.opcode;
 
@@ -218,8 +218,8 @@ pub fn decode_script1(script: &script1::Script1, selector_vocab: &vocab::Vocab99
         match dispatch {
             script1::Dispatch::Offset(offset) => {
                 let code = script.get_code().iter()
-                    .filter(|c| match c { script1::Code::Dispatch(offs, _, _) => { offs == offset }, _ => false })
-                    .next().unwrap();
+                    .find(|c| match c { script1::Code::Dispatch(offs, _, _) => { offs == offset }, _ => false })
+                    .unwrap();
 
                 println!("  {} {{", index);
                 decode_script1_code(&script, kernel_vocab, class_definitions, code);
